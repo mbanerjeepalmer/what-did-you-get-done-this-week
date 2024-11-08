@@ -1,0 +1,28 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "fs:default",
+    "fs:allow-app-write-recursive",
+    "fs:allow-app-read-recursive",
+    "fs:allow-appcache-read-recursive",
+    "core:window:allow-hide",
+    "core:window:allow-minimize",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    {
+      "identifier": "fs:allow-app-write-recursive",
+      "allow": [
+        {
+          "path": "$HOME/**/*"
+        }
+      ]
+    }
+  ]
+}

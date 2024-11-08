@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "what-did-you-get-done-this-week",
+  "version": "0.1.0",
+  "identifier": "com.what-did-you-get-done-this-week.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "What did you get done this week?",
+        "width": 622,
+        "height": 640
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$HOME/*"
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "fs": {}
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/sink.png"
+    ]
+  }
+}
