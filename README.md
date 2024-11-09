@@ -25,13 +25,19 @@ Build for your platform:
 npm run tauri build
 ```
 
+Contributions are very welcome. I have no idea what I'm doing here.
+
 ## TODO
+- [ ] [Releases for Linux, Mac, Windows using GitHub Actions](https://github.com/mbanerjeepalmer/what-did-you-get-done-this-week/issues/1)
+- [ ] onCloseRequested handler not correctly intercepting on Ubuntu
+- [ ] Skip mechanism (i.e. I didn't achieve anything in the last 15 minutes)
 - [ ] Releases for all platforms
 - [ ] Fix icon display
 - [ ] Fix system tray menu
-- [ ] Customisable frequency
-- [ ] Customisable names 
-- [ ] Ask for target
+- [ ] Customisable frequency (i.e. 15mins, one week)
+- [ ] Customisable names
+- [ ] Ask what _will_ you get done in the next period
+- [ ] Notifications instead of
 
 ## FAQ
 - Q: Are you an Elon fanboy?
