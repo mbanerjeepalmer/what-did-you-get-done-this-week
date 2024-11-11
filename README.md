@@ -16,6 +16,8 @@
 
 Built with [SvelteKit and Tauri](https://v2.tauri.app/start/frontend/sveltekit/).
 
+Make sure you meet the [prerequisites](https://v2.tauri.app/start/prerequisites/).
+
 Dev server:
 ```
 npm run tauri dev
