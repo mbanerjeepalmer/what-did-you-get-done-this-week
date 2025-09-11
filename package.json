@@ -1,0 +1,30 @@
+{
+  "name": "what-did-you-get-done-this-week",
+  "version": "0.0.1",
+  "description": "Checks what you got done at an interval.",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "postbuild": "node scripts/fix-shebang.js",
+    "deploy": "npm run build && ln -sf $(pwd)/dist/what.js ~/.config/argos/what.1s.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mbanerjeepalmer/what-did-you-get-done-this-week.git"
+  },
+  "keywords": [
+    "productivity",
+    "argos",
+    "calendar"
+  ],
+  "author": "Maurice Banerjee Palmer",
+  "license": " AGPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/mbanerjeepalmer/what-did-you-get-done-this-week/issues"
+  },
+  "homepage": "https://github.com/mbanerjeepalmer/what-did-you-get-done-this-week#readme",
+  "devDependencies": {
+    "@types/node": "^24.3.1",
+    "typescript": "^5.9.2"
+  }
+}
