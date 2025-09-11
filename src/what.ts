@@ -7,12 +7,10 @@ const FILE_PATH = path.join(CONFIG_DIR, `${new Date().toISOString().slice(0, 10)
 (async () => {
     await fs.promises.mkdir(CONFIG_DIR, { recursive: true });
 
-    // Display Argos menu
-    const now = new Date().toLocaleTimeString();
-    console.log(`🕒 ${now}`);
+    console.log(`What?`);
     console.log('---');
 
-    // Show last 5 entries if file exists
+
     if (fs.existsSync(FILE_PATH)) {
         const lines = (await fs.promises.readFile(FILE_PATH, 'utf8')).trim().split('\n');
         const lastEntries = lines.slice(-5);
@@ -22,7 +20,6 @@ const FILE_PATH = path.join(CONFIG_DIR, `${new Date().toISOString().slice(0, 10)
         console.log('---');
     }
 
-    // Menu item to add new entry using zenity (Zsh-safe quoting, writes directly to file)
     console.log('Enter what you did | bash="$HOME/what-did-you-get-done-this-week/add_entry.sh" terminal=false')
     console.log('Refresh | refresh=true');
 })();
