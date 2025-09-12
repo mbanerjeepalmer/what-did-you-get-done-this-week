@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "postbuild": "node scripts/fix-shebang.js",
-    "deploy": "npm run build && ln -sf $(pwd)/dist/what.js ~/.config/argos/what.10s.js"
+    "deploy": "npm run build && ln -sf $(pwd)/dist/what.js ~/.config/argos/what.1m.js"
   },
   "repository": {
     "type": "git",
