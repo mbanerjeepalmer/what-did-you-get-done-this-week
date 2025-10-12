@@ -1,8 +1,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+const getLocalDateString = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+
 const CONFIG_DIR = path.join(process.env.HOME || '.', 'what-did-you-get-done-this-week');
-const FILE_PATH = path.join(CONFIG_DIR, `${new Date().toISOString().slice(0, 10)}.txt`);
+const FILE_PATH = path.join(CONFIG_DIR, `${getLocalDateString()}.txt`);
 
 (async () => {
     await fs.promises.mkdir(CONFIG_DIR, { recursive: true });
@@ -15,7 +24,7 @@ const FILE_PATH = path.join(CONFIG_DIR, `${new Date().toISOString().slice(0, 10)
         if (lastLine.includes('SNOOZE UNTIL')) {
             const snoozeMatch = lastLine.match(/SNOOZE UNTIL (.+)$/);
             if (snoozeMatch) {
-                const snoozeTime = new Date(snoozeMatch[1]);
+                const snoozeTime = new Date(snoozeMatch[1].trim());
                 if (new Date() < snoozeTime) {
                     displayTitle = `Snoozed until ${snoozeTime.toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit' })}`;
                 }
@@ -34,7 +43,7 @@ const FILE_PATH = path.join(CONFIG_DIR, `${new Date().toISOString().slice(0, 10)
         if (lastLine.includes('SNOOZE UNTIL')) {
             const snoozeMatch = lastLine.match(/SNOOZE UNTIL (.+)$/);
             if (snoozeMatch) {
-                const snoozeTime = new Date(snoozeMatch[1]);
+                const snoozeTime = new Date(snoozeMatch[1].trim());
                 shouldNotify = new Date() >= snoozeTime;
             }
         } else {
