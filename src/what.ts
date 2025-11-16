@@ -64,6 +64,7 @@ const FILE_PATH = path.join(CONFIG_DIR, `${getLocalDateString()}.txt`);
     }
 
     console.log('Enter what you did | bash="$HOME/what-did-you-get-done-this-week/add_entry.sh" terminal=false')
-    console.log('Snooze for 15 minutes | bash="$HOME/what-did-you-get-done-this-week/snooze.sh" terminal=false')
+    console.log('Snooze for 15 minutes | bash="$HOME/what-did-you-get-done-this-week/snooze.sh 15" terminal=false')
+    console.log('Custom snooze | bash="$HOME/what-did-you-get-done-this-week/snooze.sh custom" terminal=false')
     console.log('Refresh | refresh=true');
 })();
