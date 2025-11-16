@@ -8,5 +8,5 @@ mkdir -p "$CONFIG_DIR"
 ENTRY=$(zenity --entry --text="What did you get done?" --title="Add Entry")
 
 if [ -n "$ENTRY" ]; then
-    echo "$(date) - $ENTRY" >> "$FILE"
+    echo "$(date -Iseconds) - $ENTRY" >> "$FILE"
 fi
