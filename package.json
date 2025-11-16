@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "postbuild": "node scripts/fix-shebang.js",
-    "deploy": "npm run build && ln -sf $(pwd)/dist/what.js ~/.config/argos/what.1m.js"
+    "deploy": "npm run build && mkdir -p ~/what-did-you-get-done-this-week && cp scripts/add_entry.sh scripts/snooze.sh ~/what-did-you-get-done-this-week/ && chmod +x ~/what-did-you-get-done-this-week/add_entry.sh ~/what-did-you-get-done-this-week/snooze.sh && ln -sf $(pwd)/dist/what.js ~/.config/argos/what.1m.js"
   },
   "repository": {
     "type": "git",
