@@ -1,34 +1,30 @@
 {
   "name": "what-did-you-get-done-this-week",
-  "version": "0.1.0",
-  "description": "",
-  "type": "module",
+  "version": "0.0.1",
+  "description": "Checks what you got done at an interval.",
+  "main": "index.js",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "preview": "vite preview",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "tauri": "tauri"
+    "build": "tsc",
+    "postbuild": "node scripts/fix-shebang.js",
+    "deploy": "npm run build && mkdir -p ~/what-did-you-get-done-this-week && cp scripts/add_entry.sh scripts/snooze.sh ~/what-did-you-get-done-this-week/ && chmod +x ~/what-did-you-get-done-this-week/add_entry.sh ~/what-did-you-get-done-this-week/snooze.sh && ln -sf $(pwd)/dist/what.js ~/.config/argos/what.1m.js"
   },
-  "license": "MIT",
-  "dependencies": {
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-fs": "^2.0.2",
-    "@tauri-apps/plugin-shell": "^2"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mbanerjeepalmer/what-did-you-get-done-this-week.git"
   },
+  "keywords": [
+    "productivity",
+    "argos",
+    "calendar"
+  ],
+  "author": "Maurice Banerjee Palmer",
+  "license": " AGPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/mbanerjeepalmer/what-did-you-get-done-this-week/issues"
+  },
+  "homepage": "https://github.com/mbanerjeepalmer/what-did-you-get-done-this-week#readme",
   "devDependencies": {
-    "@sveltejs/adapter-static": "^3.0.5",
-    "@sveltejs/kit": "^2.7.0",
-    "@sveltejs/vite-plugin-svelte": "^4.0.0",
-    "@tauri-apps/cli": "^2",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.47",
-    "svelte": "^5.0.0",
-    "svelte-check": "^4.0.0",
-    "tailwindcss": "^3.4.14",
-    "tslib": "^2.8.0",
-    "typescript": "^5.5.0",
-    "vite": "^5.4.10"
+    "@types/node": "^24.3.1",
+    "typescript": "^5.9.2"
   }
 }
