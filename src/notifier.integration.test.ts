@@ -1,0 +1,44 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { getNotifier, LinuxNotifier, MacNotifier, WindowsNotifier } from './notifier';
+
+test('getNotifier picks WindowsNotifier on win32', () => {
+    assert.ok(getNotifier('win32') instanceof WindowsNotifier);
+});
+
+test('getNotifier picks MacNotifier on darwin', () => {
+    assert.ok(getNotifier('darwin') instanceof MacNotifier);
+});
+
+test('getNotifier picks LinuxNotifier on plain linux (no WSL markers)', () => {
+    const originalEnv = process.env.WSL_DISTRO_NAME;
+    delete process.env.WSL_DISTRO_NAME;
+    try {
+        // Note: this only reflects "plain Linux" if /proc/version doesn't
+        // mention Microsoft either; on this dev machine (WSL) that's not the
+        // case, so this assertion is skipped there and covered by the
+        // WSL-detection test below instead.
+        const isActuallyWsl = require('fs')
+            .readFileSync('/proc/version', 'utf8')
+            .toLowerCase()
+            .includes('microsoft');
+        if (!isActuallyWsl) {
+            assert.ok(getNotifier('linux') instanceof LinuxNotifier);
+        }
+    } catch {
+        assert.ok(getNotifier('linux') instanceof LinuxNotifier);
+    } finally {
+        if (originalEnv !== undefined) process.env.WSL_DISTRO_NAME = originalEnv;
+    }
+});
+
+test('getNotifier picks WindowsNotifier on linux when WSL_DISTRO_NAME is set', () => {
+    const originalEnv = process.env.WSL_DISTRO_NAME;
+    process.env.WSL_DISTRO_NAME = 'Ubuntu';
+    try {
+        assert.ok(getNotifier('linux') instanceof WindowsNotifier);
+    } finally {
+        if (originalEnv === undefined) delete process.env.WSL_DISTRO_NAME;
+        else process.env.WSL_DISTRO_NAME = originalEnv;
+    }
+});

@@ -4,6 +4,7 @@
         "rootDir": "src",
         "module": "commonjs",
         "target": "es2020",
-        "strict": true
+        "strict": true,
+        "esModuleInterop": true
     }
 }
