@@ -58,11 +58,6 @@ export const resolvePowershellExecutable = (): string => {
     return resolvedPowershellPath;
 };
 
-// A pre-registered AUMID that lets an unpackaged script raise a native toast
-// under Windows PowerShell's own identity, with no shortcut/registration step.
-const POWERSHELL_AUMID = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe';
-
-const escapeXml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 export const escapePowershellSingleQuoted = (s: string) => s.replace(/'/g, "''");
 
 export const runPowershellScript = (script: string): Promise<string> => {
@@ -73,29 +68,6 @@ export const runPowershellScript = (script: string): Promise<string> => {
         '-EncodedCommand',
         encoded,
     ]);
-};
-
-/**
- * Fire-and-forget native Windows toast (Action Center) as a visual alert.
- * Note: Windows PowerShell cannot subscribe to WinRT toast events
- * ("Windows PowerShell cannot subscribe to Windows RT events"), so toast
- * action buttons can't reliably report back to this process -- this is
- * alert-only, matching notify-send's role in the original Linux design.
- * The WinForms dialog below is the guaranteed, working input path.
- */
-const showNativeToast = async (title: string, text: string): Promise<void> => {
-    const toastXml = `<toast scenario="reminder"><visual><binding template="ToastGeneric"><text>${escapeXml(
-        title,
-    )}</text><text>${escapeXml(text)}</text></binding></visual></toast>`;
-    const script = [
-        '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null',
-        '[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime] | Out-Null',
-        '$xml = New-Object Windows.Data.Xml.Dom.XmlDocument',
-        `$xml.LoadXml('${escapePowershellSingleQuoted(toastXml)}')`,
-        '$toast = New-Object Windows.UI.Notifications.ToastNotification $xml',
-        `[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('${POWERSHELL_AUMID}').Show($toast)`,
-    ].join('; ');
-    await runPowershellScript(script);
 };
 
 /**
@@ -116,14 +88,57 @@ const showWinFormsPrompt = async (
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$form = New-Object System.Windows.Forms.Form
+# A plain Form always activates (and steals keyboard focus) when shown, even
+# non-modally, which is why the popup used to grab focus away from whatever
+# the user was doing. This subclass sets WS_EX_NOACTIVATE so Windows shows it
+# without activating it -- it renders with an inactive title bar and doesn't
+# take focus until the user clicks into it.
+Add-Type -ReferencedAssemblies System.Windows.Forms -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+
+public class NonActivatingForm : Form {
+    private const int WS_EX_NOACTIVATE = 0x08000000;
+    private const int GWL_EXSTYLE = -20;
+
+    [DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll")]
+    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    protected override bool ShowWithoutActivation { get { return true; } }
+    protected override CreateParams CreateParams {
+        get {
+            // Only needed for the initial, non-activating show -- see OnShown.
+            CreateParams cp = base.CreateParams;
+            cp.ExStyle |= WS_EX_NOACTIVATE;
+            return cp;
+        }
+    }
+    protected override void OnShown(EventArgs e) {
+        base.OnShown(e);
+        // WS_EX_NOACTIVATE also blocks click-to-activate, which would leave
+        // the form permanently unable to receive keyboard input. Drop the
+        // style once the initial non-activating show has happened so a
+        // click behaves normally from here on.
+        int exStyle = GetWindowLong(this.Handle, GWL_EXSTYLE);
+        SetWindowLong(this.Handle, GWL_EXSTYLE, exStyle & ~WS_EX_NOACTIVATE);
+    }
+}
+'@
+
+$form = New-Object NonActivatingForm
 $form.Text = '${escapePowershellSingleQuoted(title)}'
 $form.Width = 420
 $form.Height = 190
 $form.FormBorderStyle = 'FixedDialog'
 $form.MaximizeBox = $false
 $form.MinimizeBox = $false
-$form.StartPosition = 'CenterScreen'
+$form.StartPosition = 'Manual'
+$workingArea = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+$margin = 20
+$form.Location = New-Object System.Drawing.Point(($workingArea.Right - $form.Width - $margin), ($workingArea.Bottom - $form.Height - $margin))
 $form.TopMost = $true
 
 $label = New-Object System.Windows.Forms.Label
@@ -163,8 +178,7 @@ $btnDismiss.Add_Click({ $script:wgdResult = @{ Action = 'dismiss'; Text = '' }; 
 $form.Controls.Add($btnDismiss)
 
 $form.AcceptButton = $btnLog
-$form.Add_Shown({ $form.Activate(); $textbox.Focus() })
-[void]$form.ShowDialog()
+[System.Windows.Forms.Application]::Run($form)
 
 if ($null -eq $script:wgdResult) {
     # closed via the window's X button
@@ -187,8 +201,6 @@ Write-Output "$($script:wgdResult.Action)|$($script:wgdResult.Text)"
 
 export class WindowsNotifier implements Notifier {
     async prompt(title: string, text: string): Promise<string | null> {
-        await showNativeToast(title, text).catch(() => {});
-
         const result = await showWinFormsPrompt(title, text);
 
         if (result.action === 'dismiss') return null;
