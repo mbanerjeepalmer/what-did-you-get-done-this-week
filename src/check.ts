@@ -31,11 +31,20 @@ const appendLine = (filePath: string, line: string): void => {
 };
 
 /**
+ * @param clock source of the current time. Read once for the due check and
+ *   again after the prompt returns, since the dialog can sit open for a long
+ *   time (e.g. while the user is away) and snoozes/entries must be timed from
+ *   when the user actually answered, not from when the dialog appeared.
  * @param forcePrompt bypass the due-time check and prompt immediately
  *   regardless of schedule (used by `--now`/manual invocation).
  */
-export const runCheck = async (now: Date = new Date(), forcePrompt = false): Promise<void> => {
+export const runCheck = async (
+    clock: () => Date = () => new Date(),
+    forcePrompt = false,
+): Promise<void> => {
     fs.mkdirSync(CONFIG_DIR, { recursive: true });
+
+    const now = clock();
 
     const filePath = getTodayFilePath(now);
     const lines = readLines(filePath);
@@ -68,23 +77,26 @@ export const runCheck = async (now: Date = new Date(), forcePrompt = false): Pro
                       'Describe what you accomplished:',
                   );
 
+        const answeredAt = clock();
+        const answeredFilePath = getTodayFilePath(answeredAt);
+
         if (response === null) {
             // Dismissed: record an implicit 15-minute snooze so the prompt doesn't
             // reappear on every subsequent minute's check before the interval is up.
-            const snoozeUntil = parseSnoozeInput('15', now)!;
-            appendLine(filePath, formatSnoozeLine(now, snoozeUntil));
+            const snoozeUntil = parseSnoozeInput('15', answeredAt)!;
+            appendLine(answeredFilePath, formatSnoozeLine(answeredAt, snoozeUntil));
             return;
         }
 
         if (isSnoozeCommand(response)) {
-            const snoozeUntil = parseSnoozeInput(extractSnoozeArgument(response), now);
+            const snoozeUntil = parseSnoozeInput(extractSnoozeArgument(response), answeredAt);
             if (snoozeUntil) {
-                appendLine(filePath, formatSnoozeLine(now, snoozeUntil));
+                appendLine(answeredFilePath, formatSnoozeLine(answeredAt, snoozeUntil));
             }
             return;
         }
 
-        appendLine(filePath, formatEntryLine(now, response));
+        appendLine(answeredFilePath, formatEntryLine(answeredAt, response));
     } finally {
         releaseLock(LOCK_PATH);
     }
@@ -92,7 +104,7 @@ export const runCheck = async (now: Date = new Date(), forcePrompt = false): Pro
 
 if (require.main === module) {
     const forcePrompt = process.argv.includes('--now') || process.argv.includes('--force');
-    runCheck(new Date(), forcePrompt).catch((err) => {
+    runCheck(undefined, forcePrompt).catch((err) => {
         console.error(err);
         process.exitCode = 1;
     });
