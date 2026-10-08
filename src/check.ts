@@ -14,9 +14,15 @@ import {
 import { getNotifier } from './notifier';
 import { acquireLock, releaseLock } from './lock';
 import { getCurrentMeeting } from './calendar';
+import { getActiveMicApp } from './microphone';
+import { loadConfig } from './config';
+
+/** A call found via the mic has no known end, so re-check this often until it's over. */
+const CALL_RECHECK_MINUTES = 5;
 
 const CONFIG_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', CONFIG_DIR_NAME);
 const LOCK_PATH = path.join(CONFIG_DIR, '.prompt.lock');
+const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 
 const getTodayFilePath = (now: Date): string =>
     path.join(CONFIG_DIR, `${getLocalDateString(now)}.txt`);
@@ -58,10 +64,18 @@ export const runCheck = async (
     if (!acquireLock(LOCK_PATH)) return;
 
     try {
-        if (!forcePrompt) {
+        // WGD_SKIP_MEETING_CHECK keeps the e2e tests independent of the real calendar/mic.
+        if (!forcePrompt && !process.env.WGD_SKIP_MEETING_CHECK) {
             const meeting = await getCurrentMeeting(now);
             if (meeting) {
                 appendLine(filePath, formatMeetingLine(now, meeting.end, meeting.subject));
+                return;
+            }
+
+            const micApp = loadConfig(CONFIG_PATH).micCheck ? await getActiveMicApp() : null;
+            if (micApp) {
+                const recheckAt = new Date(now.getTime() + CALL_RECHECK_MINUTES * 60000);
+                appendLine(filePath, formatMeetingLine(now, recheckAt, `Call (mic in use: ${micApp})`));
                 return;
             }
         }

@@ -10,7 +10,7 @@ const CHECK_JS = path.join(__dirname, 'check.js');
 
 const runCheck = (home: string, testResponse: string | undefined): void => {
     execFileSync(process.execPath, [CHECK_JS], {
-        env: { ...process.env, HOME: home, USERPROFILE: home, WGD_TEST_RESPONSE: testResponse },
+        env: { ...process.env, HOME: home, USERPROFILE: home, WGD_SKIP_MEETING_CHECK: '1', WGD_TEST_RESPONSE: testResponse },
     });
 };
 
@@ -46,7 +46,7 @@ test('e2e: "snooze 5" writes a SNOOZE line and suppresses the next check', () =>
         // waiting for a real GUI if it *did* try to prompt, so this also
         // proves no prompt was attempted).
         execFileSync(process.execPath, [CHECK_JS], {
-            env: { ...process.env, HOME: home, USERPROFILE: home, WGD_TEST_RESPONSE: undefined },
+            env: { ...process.env, HOME: home, USERPROFILE: home, WGD_SKIP_MEETING_CHECK: '1', WGD_TEST_RESPONSE: undefined },
             timeout: 5000,
         });
         const linesAfter = readTodayFile(home);

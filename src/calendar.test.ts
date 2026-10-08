@@ -43,6 +43,15 @@ test('findCurrentMeeting ignores events marked Free', () => {
     assert.equal(findCurrentMeeting(events, new Date('2026-01-05T10:15:00.000Z')), null);
 });
 
+test('findCurrentMeeting ignores everything but Busy', () => {
+    const events = parseCalendarOutput(
+        ['Free', 'Tentative', 'OutOfOffice', 'WorkingElsewhere']
+            .map((status) => `2026-01-05T10:00:00.000Z|2026-01-05T10:30:00.000Z|${status}|${status} event`)
+            .join('\n'),
+    );
+    assert.equal(findCurrentMeeting(events, new Date('2026-01-05T10:15:00.000Z')), null);
+});
+
 test('findCurrentMeeting returns null when nothing covers `now`', () => {
     const events = parseCalendarOutput(
         '2026-01-05T10:00:00.000Z|2026-01-05T10:30:00.000Z|Busy|Stand-up',

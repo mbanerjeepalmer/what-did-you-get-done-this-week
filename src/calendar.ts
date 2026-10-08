@@ -1,4 +1,4 @@
-import { escapePowershellSingleQuoted, runPowershellScript } from './notifier';
+import { runPowershellScript } from './notifier';
 
 export interface CalendarEvent {
     start: Date;
@@ -8,8 +8,12 @@ export interface CalendarEvent {
     subject: string;
 }
 
-/** BusyStatus values that count as "actually in something", not just a placeholder on the calendar. */
-const BUSY_STATUSES = new Set(['Busy', 'OutOfOffice', 'WorkingElsewhere']);
+/**
+ * Only "Busy" counts as actually being in something. Free/Tentative are
+ * placeholders, and OutOfOffice/WorkingElsewhere are typically all-day
+ * markers that would otherwise suppress the prompt for the whole day.
+ */
+const isBusy = (event: CalendarEvent): boolean => event.busyStatus === 'Busy';
 
 /**
  * Reads today's calendar via Outlook COM automation, driven from PowerShell.
@@ -18,26 +22,60 @@ const BUSY_STATUSES = new Set(['Busy', 'OutOfOffice', 'WorkingElsewhere']);
  * Outlook COM instead rides on the desktop client's existing signed-in
  * session, so it works with no auth setup at all -- at the cost of only
  * working when Outlook is installed and running on the Windows side.
+ *
+ * Outlook's Restrict() parses date strings using the Windows locale, so an
+ * ISO-ish "2026-10-06" is read as year-day-month (10 June) on a UK machine.
+ * The dates are therefore built from numeric parts inside PowerShell and
+ * formatted with the current culture ("g") for Outlook to parse back.
+ * Sort must precede IncludeRecurrences, per Outlook's docs, or recurring
+ * occurrences are not expanded correctly.
+ *
+ * Classic Outlook usually isn't running (the new Outlook, olk.exe, is what's
+ * used day to day, and it has no COM API). COM starts it headless, and without
+ * a sync it answers from a local cache that can be days out of date -- missing
+ * any one-off meeting booked since it last ran. So a send/receive is run first
+ * and waited on, up to SYNC_TIMEOUT_MS; if it doesn't finish (or the interop
+ * assembly is missing) the query still runs against whatever is cached.
+ * SyncEnd isn't reachable from PowerShell's late-bound COM objects, hence the
+ * small C# helper compiled against Outlook's interop assembly.
  */
+const SYNC_TIMEOUT_MS = 30000;
+
 const buildOutlookQueryScript = (startOfDay: Date, endOfDay: Date): string => {
-    const toOutlookDateString = (d: Date) =>
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-            d.getDate(),
-        ).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(
-            d.getMinutes(),
-        ).padStart(2, '0')}`;
+    const toPowershellDate = (d: Date) =>
+        `(New-Object DateTime ${d.getFullYear()}, ${d.getMonth() + 1}, ${d.getDate()}, ${d.getHours()}, ${d.getMinutes()}, 0)`;
 
     return `
+$rangeStart = ${toPowershellDate(startOfDay)}
+$rangeEnd = ${toPowershellDate(endOfDay)}
+
 $outlook = New-Object -ComObject Outlook.Application
 $namespace = $outlook.GetNamespace("MAPI")
+
+try {
+    $pia = [Reflection.Assembly]::LoadWithPartialName('Microsoft.Office.Interop.Outlook')
+    Add-Type -ReferencedAssemblies $pia.Location -TypeDefinition @'
+using System.Threading;
+using Outlook = Microsoft.Office.Interop.Outlook;
+public static class WgdOutlookSync {
+    public static bool Run(object ns, int timeoutMs) {
+        var sync = ((Outlook.NameSpace)ns).SyncObjects[1];
+        var done = new ManualResetEvent(false);
+        sync.SyncEnd += () => done.Set();
+        sync.Start();
+        return done.WaitOne(timeoutMs);
+    }
+}
+'@
+    $null = [WgdOutlookSync]::Run($namespace, ${SYNC_TIMEOUT_MS})
+} catch {}
 $calendar = $namespace.GetDefaultFolder(9)
 $items = $calendar.Items
-$items.IncludeRecurrences = $true
 $items.Sort("[Start]")
+$items.IncludeRecurrences = $true
 
-$filter = "[Start] >= '${escapePowershellSingleQuoted(
-        toOutlookDateString(startOfDay),
-    )}' AND [Start] <= '${escapePowershellSingleQuoted(toOutlookDateString(endOfDay))}'"
+# Overlap, not "starts within": also catches events that began before rangeStart.
+$filter = "[Start] < '" + $rangeEnd.ToString("g") + "' AND [End] > '" + $rangeStart.ToString("g") + "'"
 $todayItems = $items.Restrict($filter)
 
 foreach ($item in $todayItems) {
@@ -83,7 +121,7 @@ export const getEventsForDay = async (day: Date): Promise<CalendarEvent[]> => {
 export const findCurrentMeeting = (events: CalendarEvent[], now: Date): CalendarEvent | null =>
     events.find(
         (event) =>
-            BUSY_STATUSES.has(event.busyStatus) &&
+            isBusy(event) &&
             event.start.getTime() <= now.getTime() &&
             now.getTime() < event.end.getTime(),
     ) ?? null;

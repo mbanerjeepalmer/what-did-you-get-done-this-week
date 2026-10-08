@@ -40,8 +40,8 @@ entries (subject, times, `BusyStatus`) with zero configuration.
   Kept pure and separate from the PowerShell call so it's unit-testable
   without Outlook installed.
 - `findCurrentMeeting(events, now)` is also pure: picks the event (if any)
-  covering `now` whose `BusyStatus` is `Busy`, `OutOfOffice`, or
-  `WorkingElsewhere` (not `Free`/`Tentative`-as-free-time).
+  covering `now` whose `BusyStatus` is `Busy` (not `Free`, `Tentative`,
+  `OutOfOffice` or `WorkingElsewhere`).
 - `getCurrentMeeting(now)` combines both and **fails open**: any error
   (Outlook not running, not on Windows, COM error) returns `null` rather than
   throwing, so a broken calendar check never blocks the prompt.
@@ -64,6 +64,34 @@ are excluded from `totalMinutes` and both set `nextPromptAt` to their own
 snooze in the log. Unlike a snooze, the "until" time is the meeting's actual
 end time from the calendar, not a flat 15 minutes — so the prompt reappears
 right when the meeting finishes rather than up to 15 minutes late.
+
+## Stale cache: sync before querying
+
+Day to day the new Outlook (`olk.exe`) is used, and it has no COM API. Classic
+Outlook is only started headless by COM, which answers from its local cache
+and closes again before syncing, so the cache can sit days out of date and
+miss recently booked one-off meetings (recurring series still show up, which
+hides the problem). The query script therefore runs a send/receive and waits
+for `SyncEnd` (up to 30s) before reading the calendar.
+
+## Calls that aren't on the calendar
+
+Ad-hoc Teams/Zoom calls (or invites on a non-default calendar) never show up
+in the Outlook query. So if the calendar finds nothing, `src/microphone.ts`
+checks whether any app is holding the mic right now, via the registry's
+CapabilityAccessManager consent store (`LastUsedTimeStop == 0`). If so, a
+meeting line is written with a 5-minute "until", since a call has no known end:
+
+```
+2026-10-07T09:46:00.000Z	MEETING UNTIL 2026-10-07T09:51:00.000Z	Call (mic in use: MSTeams_8wekyb3d8bbwe)
+```
+
+Off by default (any app holding the mic counts, e.g. dictation). Enable it in
+`~/what-did-you-get-done-this-week/config.json`:
+
+```json
+{ "micCheck": true }
+```
 
 ## Not done yet
 
