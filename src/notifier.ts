@@ -3,8 +3,12 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 
 export interface Notifier {
-    /** Shows a prompt and returns the user's text, or null if dismissed/cancelled. */
-    prompt(title: string, text: string): Promise<string | null>;
+    /**
+     * Shows a prompt and returns the user's text, or null if dismissed/cancelled.
+     * @param filePath the day file entries are being written to, offered as a
+     *   link (or shown as a path where the dialog can't do links).
+     */
+    prompt(title: string, text: string, filePath?: string): Promise<string | null>;
 }
 
 const runCommand = (command: string, args: string[]): Promise<string> =>
@@ -58,6 +62,15 @@ export const resolvePowershellExecutable = (): string => {
     return resolvedPowershellPath;
 };
 
+/**
+ * The dialog runs on the Windows side, so a WSL path has to be translated
+ * (to \\wsl.localhost\<distro>\...) before Windows can open it.
+ */
+export const toWindowsPath = async (filePath: string): Promise<string> => {
+    if (process.platform === 'win32') return filePath;
+    return (await runCommand('wslpath', ['-w', filePath])).trim();
+};
+
 export const escapePowershellSingleQuoted = (s: string) => s.replace(/'/g, "''");
 
 export const runPowershellScript = (script: string): Promise<string> => {
@@ -83,7 +96,18 @@ export const runPowershellScript = (script: string): Promise<string> => {
 const showWinFormsPrompt = async (
     title: string,
     text: string,
+    filePath?: string,
 ): Promise<{ action: 'log' | 'snooze' | 'dismiss'; text: string }> => {
+    const windowsFilePath = filePath ? await toWindowsPath(filePath).catch(() => null) : null;
+    const fileLinkScript = windowsFilePath
+        ? `
+$fileLink = New-Object System.Windows.Forms.LinkLabel
+$fileLink.Text = 'Open ${escapePowershellSingleQuoted(path.basename(filePath!))}'
+$fileLink.SetBounds(10, 75, 385, 16)
+$fileLink.Add_LinkClicked({ Start-Process -FilePath '${escapePowershellSingleQuoted(windowsFilePath)}' })
+$form.Controls.Add($fileLink)
+`
+        : '';
     const script = `
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -156,7 +180,7 @@ $hint.SetBounds(10, 58, 385, 16)
 $hint.ForeColor = [System.Drawing.Color]::Gray
 $hint.Font = New-Object System.Drawing.Font($hint.Font.FontFamily, 7.5)
 $form.Controls.Add($hint)
-
+${fileLinkScript}
 $script:wgdResult = $null
 
 $btnLog = New-Object System.Windows.Forms.Button
@@ -200,8 +224,8 @@ Write-Output "$($script:wgdResult.Action)|$($script:wgdResult.Text)"
 };
 
 export class WindowsNotifier implements Notifier {
-    async prompt(title: string, text: string): Promise<string | null> {
-        const result = await showWinFormsPrompt(title, text);
+    async prompt(title: string, text: string, filePath?: string): Promise<string | null> {
+        const result = await showWinFormsPrompt(title, text, filePath);
 
         if (result.action === 'dismiss') return null;
         if (result.action === 'snooze') {
@@ -214,8 +238,12 @@ export class WindowsNotifier implements Notifier {
 
 const FORMS_SEPARATOR = ''; // unlikely to appear in either field, unlike a visible character
 
+const withFilePath = (text: string, filePath?: string) =>
+    filePath ? `${text}\n(writing to ${filePath})` : text;
+
 export class LinuxNotifier implements Notifier {
-    async prompt(title: string, text: string): Promise<string | null> {
+    async prompt(title: string, rawText: string, filePath?: string): Promise<string | null> {
+        const text = withFilePath(rawText, filePath);
         await runCommand('notify-send', [title, text]).catch(() => {
             // best-effort; zenity dialog below is the real prompt
         });
@@ -239,9 +267,9 @@ export class LinuxNotifier implements Notifier {
 }
 
 export class MacNotifier implements Notifier {
-    async prompt(title: string, text: string): Promise<string | null> {
+    async prompt(title: string, text: string, filePath?: string): Promise<string | null> {
         const escape = (s: string) => s.replace(/"/g, '\\"');
-        const hint = `${text} (to snooze: enter a duration or time, e.g. 30 or 16:00, then click Snooze)`;
+        const hint = `${withFilePath(text, filePath)} (to snooze: enter a duration or time, e.g. 30 or 16:00, then click Snooze)`;
         const script = `display dialog "${escape(hint)}" with title "${escape(
             title,
         )}" default answer "" buttons {"Dismiss", "Snooze", "Log"} default button "Log"`;

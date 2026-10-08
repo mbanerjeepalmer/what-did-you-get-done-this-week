@@ -80,6 +80,10 @@ export const runCheck = async (
             }
         }
 
+        // Make sure the day file exists so the dialog's link to it opens
+        // something even before the first entry of the day.
+        fs.appendFileSync(filePath, '');
+
         const testResponse = process.env.WGD_TEST_RESPONSE;
         const response =
             testResponse !== undefined
@@ -89,6 +93,7 @@ export const runCheck = async (
                 : await getNotifier().prompt(
                       'What did you get done?',
                       'Describe what you accomplished:',
+                      filePath,
                   );
 
         const answeredAt = clock();
