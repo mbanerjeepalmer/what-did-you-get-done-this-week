@@ -24,6 +24,8 @@ try {
     console.log("No crontab entries to remove.");
 }
 
+execSync(`node ${path.join(__dirname, "autostart.js")} uninstall`, { stdio: "inherit" });
+
 if (fs.existsSync(LOCK_PATH)) {
     const pid = parseInt(fs.readFileSync(LOCK_PATH, "utf8").trim(), 10);
     if (!isNaN(pid)) {

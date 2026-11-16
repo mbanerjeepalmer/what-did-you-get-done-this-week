@@ -7,7 +7,7 @@
     "build": "tsc",
     "postbuild": "node scripts/fix-shebang.js",
     "test": "npm run build && node --test 'dist/**/*.test.js'",
-    "deploy": "npm run build && (crontab -l 2>/dev/null | grep -v 'dist/check.js'; echo \"* * * * * $(which node) $(pwd)/dist/check.js >> $HOME/.what-did-you-get-done-this-week.log 2>&1\") | crontab -",
+    "deploy": "npm run build && (crontab -l 2>/dev/null | grep -v 'dist/check.js'; echo \"* * * * * $(which node) $(pwd)/dist/check.js >> $HOME/.what-did-you-get-done-this-week.log 2>&1\") | crontab - && node scripts/autostart.js install",
     "start": "npm run deploy",
     "stop": "node scripts/stop.js",
     "restart": "npm run stop && npm run start",
