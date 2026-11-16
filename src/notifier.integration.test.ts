@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { getNotifier, LinuxNotifier, MacNotifier, parseMacDialogOutput, WindowsNotifier } from './notifier';
+import { getNotifier, LinuxNotifier, MacNotifier, parseMacDialogOutput, parsePromptHelperOutput, WindowsNotifier } from './notifier';
 
 test('getNotifier picks WindowsNotifier on win32', () => {
     assert.ok(getNotifier('win32') instanceof WindowsNotifier);
@@ -52,4 +52,10 @@ test('parseMacDialogOutput handles the trailing newline osascript emits', () => 
         button: 'Snooze',
         enteredText: '30',
     });
+});
+
+test('parsePromptHelperOutput splits action and text, keeping pipes in the text', () => {
+    assert.deepEqual(parsePromptHelperOutput('log|a | b\n'), { action: 'log', text: 'a | b' });
+    assert.deepEqual(parsePromptHelperOutput('dismiss|\n'), { action: 'dismiss', text: '' });
+    assert.deepEqual(parsePromptHelperOutput(''), { action: '', text: '' });
 });

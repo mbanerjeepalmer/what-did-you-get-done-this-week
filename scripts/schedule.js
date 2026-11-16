@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // Installs/removes whatever runs dist/check.js every minute, auto-detecting the platform:
-//   macOS         -> a launchd LaunchAgent (cron can't reliably show GUI dialogs there)
+//   macOS         -> launchd LaunchAgents: the check, plus the menu bar icon (cron can't reliably show GUI dialogs there)
 //   Linux / WSL   -> a crontab entry (+ the Windows autostart shortcut under WSL)
 //
 // Usage: node scripts/schedule.js install|uninstall
@@ -24,9 +24,9 @@ const LOG = path.join(os.homedir(), ".what-did-you-get-done-this-week.log");
 // The launcher (built by `npm run build`) keeps Calendar permission off node; see launcher.swift.
 const LAUNCHER = fs.existsSync(path.join(ROOT, "dist", "launcher")) ? path.join(ROOT, "dist", "launcher") : null;
 
+const MAC_LABEL = "com.mbanerjeepalmer.what-did-you-get-done-this-week";
+
 const installMac = () => {
-    const label = "com.mbanerjeepalmer.what-did-you-get-done-this-week";
-    const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${label}.plist`);
     const domain = `gui/${process.getuid()}`;
     const launchctl = (...args) => {
         try {
@@ -35,29 +35,52 @@ const installMac = () => {
             // not loaded yet / already gone
         }
     };
-    launchctl("bootout", `${domain}/${label}`);
-    if (mode === "uninstall") {
-        fs.rmSync(plistPath, { force: true });
-        console.log("Removed launchd agent.");
-        return;
-    }
-    const plist = `<?xml version="1.0" encoding="UTF-8"?>
+    const dist = (name) => path.join(ROOT, "dist", name);
+    const agents = [
+        // The check, every minute. Runs via the launcher (see launcher.swift).
+        {
+            label: MAC_LABEL,
+            program: [LAUNCHER, process.execPath, CHECK_JS],
+            extra: "<key>StartInterval</key><integer>60</integer>",
+        },
+        // The menu bar icon, kept alive for the whole login session.
+        {
+            label: `${MAC_LABEL}.menubar`,
+            program: [fs.existsSync(dist("menubar")) ? dist("menubar") : null, process.execPath, CHECK_JS],
+            extra: "<key>KeepAlive</key><true/><key>LimitLoadToSessionType</key><string>Aqua</string>",
+            optional: true,
+        },
+    ];
+    for (const { label, program, extra, optional } of agents) {
+        const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${label}.plist`);
+        launchctl("bootout", `${domain}/${label}`);
+        if (mode === "uninstall") {
+            fs.rmSync(plistPath, { force: true });
+            console.log(`Removed launchd agent ${label}.`);
+            continue;
+        }
+        if (optional && !program[0]) {
+            console.warn(`Skipping ${label}: its helper wasn't built (swiftc missing?).`);
+            continue;
+        }
+        const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key><string>${label}</string>
-    <key>ProgramArguments</key><array>${[LAUNCHER, process.execPath, CHECK_JS].filter(Boolean).map((a) => `<string>${a}</string>`).join("")}</array>
-    <key>StartInterval</key><integer>60</integer>
+    <key>ProgramArguments</key><array>${program.filter(Boolean).map((a) => `<string>${a}</string>`).join("")}</array>
+    ${extra}
     <key>RunAtLoad</key><true/>
     <key>StandardOutPath</key><string>${LOG}</string>
     <key>StandardErrorPath</key><string>${LOG}</string>
 </dict>
 </plist>
 `;
-    fs.mkdirSync(path.dirname(plistPath), { recursive: true });
-    fs.writeFileSync(plistPath, plist);
-    execFileSync("launchctl", ["bootstrap", domain, plistPath]);
-    console.log(`Installed launchd agent ${label}.`);
+        fs.mkdirSync(path.dirname(plistPath), { recursive: true });
+        fs.writeFileSync(plistPath, plist);
+        execFileSync("launchctl", ["bootstrap", domain, plistPath]);
+        console.log(`Installed launchd agent ${label}.`);
+    }
 };
 
 const installCron = () => {

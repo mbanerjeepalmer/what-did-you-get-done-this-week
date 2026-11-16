@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Builds the macOS Swift helpers into dist/ (mic-active, calendar-events, launcher); no-op elsewhere.
+// Builds the macOS Swift helpers into dist/ (mic-active, calendar-events, launcher, prompt, menubar); no-op elsewhere.
 // A missing helper just disables the matching check, so a failed build isn't fatal.
 if (process.platform !== "darwin") process.exit(0);
 
@@ -39,6 +39,8 @@ const build = (name, extraArgs = []) => {
 };
 
 build("mic-active");
+build("prompt");
+build("menubar");
 const plistPath = path.join(os.tmpdir(), "wgd-calendar-events.plist");
 fs.writeFileSync(plistPath, CALENDAR_PLIST);
 build("calendar-events", [...CALENDAR_LINK, "-Xlinker", plistPath]);

@@ -276,8 +276,32 @@ export const parseMacDialogOutput = (output: string): { button: string; enteredT
     };
 };
 
+/** Pure: parses the `action|text` line printed by the native prompt (scripts/prompt.swift). */
+export const parsePromptHelperOutput = (output: string): { action: string; text: string } => {
+    const separatorIndex = output.indexOf('|');
+    const action = (separatorIndex === -1 ? output : output.slice(0, separatorIndex)).trim();
+    const text = separatorIndex === -1 ? '' : output.slice(separatorIndex + 1).trim();
+    return { action, text };
+};
+
+/** Bottom-right native panel, built by `npm run build`; absent if swiftc wasn't available. */
+const MAC_PROMPT_HELPER = path.join(__dirname, 'prompt');
+
 export class MacNotifier implements Notifier {
     async prompt(title: string, text: string, filePath?: string): Promise<string | null> {
+        if (fs.existsSync(MAC_PROMPT_HELPER)) {
+            try {
+                const { action, text: entered } = parsePromptHelperOutput(
+                    await runCommand(MAC_PROMPT_HELPER, [title, text, filePath ?? '']),
+                );
+                if (action === 'snooze') return `snooze ${nullIfEmpty(entered) ?? '15'}`;
+                if (action === 'log') return nullIfEmpty(entered);
+                return null;
+            } catch {
+                return null;
+            }
+        }
+        // Fallback: `display dialog` works but can't be positioned or linked to the file.
         const escape = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         const hint = `${withFilePath(text, filePath)} (to snooze: enter a duration or time, e.g. 30 or 16:00, then click Snooze)`;
         const script = `display dialog "${escape(hint)}" with title "${escape(
