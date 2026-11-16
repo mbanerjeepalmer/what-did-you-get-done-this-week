@@ -93,6 +93,25 @@ Off by default (any app holding the mic counts, e.g. dictation). Enable it in
 { "micCheck": true }
 ```
 
+## macOS
+
+The New Outlook for Mac has no scripting API, so `calendar.ts` reads Calendar.app
+through EventKit instead (`scripts/calendar-events.swift`, built to
+`dist/calendar-events` by `npm run build`). This needs the work account added
+under System Settings > Internet Accounts > Microsoft Exchange, which syncs it
+to Calendar. All-day, cancelled and declined events are skipped; the rest map
+EventKit availability onto the same Busy/Free/Tentative values as Windows.
+
+Calendar permission is granted to the launchd job's *responsible process*.
+Under launchd that would be `node`, which has the hardened runtime and no
+Calendar entitlement, so macOS refuses to prompt (`Policy disallows prompt`
+in the TCC log) and the helper fails open silently. The agent therefore runs
+`dist/launcher` (`scripts/launcher.swift`), a tiny non-hardened binary with a
+usage description that spawns node, and holds the grant itself.
+
+The mic check on macOS (`scripts/mic-active.swift`) reports whether the default
+input device is running anywhere; it can't name the app.
+
 ## Not done yet
 
 - **Focus Assist fallback** — a registry-based check for when Outlook isn't

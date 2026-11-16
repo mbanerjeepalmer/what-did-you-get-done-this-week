@@ -21,6 +21,9 @@ const ROOT = path.join(__dirname, "..");
 const CHECK_JS = path.join(ROOT, "dist", "check.js");
 const LOG = path.join(os.homedir(), ".what-did-you-get-done-this-week.log");
 
+// The launcher (built by `npm run build`) keeps Calendar permission off node; see launcher.swift.
+const LAUNCHER = fs.existsSync(path.join(ROOT, "dist", "launcher")) ? path.join(ROOT, "dist", "launcher") : null;
+
 const installMac = () => {
     const label = "com.mbanerjeepalmer.what-did-you-get-done-this-week";
     const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${label}.plist`);
@@ -43,7 +46,7 @@ const installMac = () => {
 <plist version="1.0">
 <dict>
     <key>Label</key><string>${label}</string>
-    <key>ProgramArguments</key><array><string>${process.execPath}</string><string>${CHECK_JS}</string></array>
+    <key>ProgramArguments</key><array>${[LAUNCHER, process.execPath, CHECK_JS].filter(Boolean).map((a) => `<string>${a}</string>`).join("")}</array>
     <key>StartInterval</key><integer>60</integer>
     <key>RunAtLoad</key><true/>
     <key>StandardOutPath</key><string>${LOG}</string>

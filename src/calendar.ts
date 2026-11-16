@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { runCommand, runPowershellScript } from './notifier';
 
 export interface CalendarEvent {
@@ -110,33 +111,23 @@ export const parseCalendarOutput = (output: string): CalendarEvent[] =>
         .filter((event) => !isNaN(event.start.getTime()) && !isNaN(event.end.getTime()));
 
 /**
- * macOS: asks Outlook for Mac via JXA (osascript -l JavaScript), printing the
- * same `start|end|busyStatus|subject` lines as the PowerShell script. It needs
- * classic Outlook for Mac; the "New Outlook" has no calendar scripting
- * support and yields no events (so the check fails open to "not in a meeting").
- * The first run triggers macOS's Automation permission prompt.
+ * macOS: a small EventKit helper (scripts/calendar-events.swift, built by
+ * `npm run build`) reads Calendar.app's database and prints the same
+ * `start|end|busyStatus|subject` lines as the PowerShell script. The New
+ * Outlook has no scripting API, so this relies on the work account also being
+ * added under System Settings > Internet Accounts, which syncs it to Calendar.
  */
-export const buildMacOutlookScript = (startOfDay: Date, endOfDay: Date): string => `
-const app = Application('Microsoft Outlook');
-const rangeStart = new Date(${startOfDay.getTime()});
-const rangeEnd = new Date(${endOfDay.getTime()});
-const events = app.calendarEvents;
-const starts = events.startTime(), ends = events.endTime(), subjects = events.subject();
-const out = [];
-for (let i = 0; i < starts.length; i++) {
-    if (starts[i] < rangeEnd && ends[i] > rangeStart) {
-        out.push(starts[i].toISOString() + '|' + ends[i].toISOString() + '|Busy|' + String(subjects[i]).replace(/[\\r\\n]+/g, ' '));
-    }
-}
-out.join('\\n');
-`;
+const MAC_HELPER_PATH = path.join(__dirname, 'calendar-events');
 
 /** Fetches calendar events overlapping the given day (local time), oldest first. */
 export const getEventsForDay = async (day: Date): Promise<CalendarEvent[]> => {
     const startOfDay = new Date(day.getFullYear(), day.getMonth(), day.getDate());
     const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
     if (process.platform === 'darwin') {
-        const output = await runCommand('osascript', ['-l', 'JavaScript', '-e', buildMacOutlookScript(startOfDay, endOfDay)]);
+        const output = await runCommand(MAC_HELPER_PATH, [
+            String(startOfDay.getTime()),
+            String(endOfDay.getTime()),
+        ]);
         return parseCalendarOutput(output);
     }
     const output = await runPowershellScript(buildOutlookQueryScript(startOfDay, endOfDay));
