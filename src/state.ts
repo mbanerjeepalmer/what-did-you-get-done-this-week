@@ -139,3 +139,13 @@ export const isSnoozeCommand = (response: string): boolean =>
 
 export const extractSnoozeArgument = (response: string): string =>
     response.trim().replace(/^snooze\b/i, '').trim();
+
+/**
+ * Whole minutes until the next prompt is due, negative once it's overdue
+ * (e.g. -3 = due 3 minutes ago). Under a minute overdue shows as 0.
+ */
+export const minutesUntilNextPrompt = (lines: string[], now: Date): number => {
+    const diffMs = computeDueState(lines, now).nextPromptAt.getTime() - now.getTime();
+    const minutes = diffMs >= 0 ? Math.ceil(diffMs / 60000) : Math.trunc(diffMs / 60000);
+    return minutes === 0 ? 0 : minutes; // normalise -0
+};
