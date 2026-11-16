@@ -1,4 +1,6 @@
-import { runPowershellScript } from './notifier';
+import * as fs from 'fs';
+import * as path from 'path';
+import { runCommand, runPowershellScript } from './notifier';
 
 /**
  * Catches calls that aren't on the calendar (ad-hoc Teams/Zoom calls, or
@@ -37,8 +39,24 @@ export const parseActiveMicApps = (output: string): string[] =>
  */
 export const getActiveMicApp = async (): Promise<string | null> => {
     try {
+        if (process.platform === 'darwin') return await getActiveMicAppMac();
         return parseActiveMicApps(await runPowershellScript(MIC_USAGE_SCRIPT))[0] ?? null;
     } catch {
         return null;
     }
+};
+
+/**
+ * macOS has no per-app mic registry, so a tiny CoreAudio helper (built from
+ * scripts/mic-active.swift by `npm run build`) reports whether the default
+ * input device is running anywhere. It can't say which app, hence the label.
+ */
+const MAC_HELPER_PATH = path.join(__dirname, 'mic-active');
+
+export const parseMacMicOutput = (output: string): string | null =>
+    output.trim() === '1' ? 'default input device' : null;
+
+const getActiveMicAppMac = async (): Promise<string | null> => {
+    if (!fs.existsSync(MAC_HELPER_PATH)) return null;
+    return parseMacMicOutput(await runCommand(MAC_HELPER_PATH, []));
 };

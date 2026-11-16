@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { getNotifier, LinuxNotifier, MacNotifier, WindowsNotifier } from './notifier';
+import { getNotifier, LinuxNotifier, MacNotifier, parseMacDialogOutput, WindowsNotifier } from './notifier';
 
 test('getNotifier picks WindowsNotifier on win32', () => {
     assert.ok(getNotifier('win32') instanceof WindowsNotifier);
@@ -41,4 +41,15 @@ test('getNotifier picks WindowsNotifier on linux when WSL_DISTRO_NAME is set', (
         if (originalEnv === undefined) delete process.env.WSL_DISTRO_NAME;
         else process.env.WSL_DISTRO_NAME = originalEnv;
     }
+});
+
+test('parseMacDialogOutput handles the trailing newline osascript emits', () => {
+    assert.deepEqual(parseMacDialogOutput('button returned:Log, text returned:did a thing\n'), {
+        button: 'Log',
+        enteredText: 'did a thing',
+    });
+    assert.deepEqual(parseMacDialogOutput('button returned:Snooze, text returned:30\n'), {
+        button: 'Snooze',
+        enteredText: '30',
+    });
 });

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { findCurrentMeeting, parseCalendarOutput } from './calendar';
+import { buildMacOutlookScript, findCurrentMeeting, parseCalendarOutput } from './calendar';
 
 test('parseCalendarOutput parses pipe-delimited lines, skipping blanks', () => {
     const output = [
@@ -57,4 +57,10 @@ test('findCurrentMeeting returns null when nothing covers `now`', () => {
         '2026-01-05T10:00:00.000Z|2026-01-05T10:30:00.000Z|Busy|Stand-up',
     );
     assert.equal(findCurrentMeeting(events, new Date('2026-01-05T09:00:00.000Z')), null);
+});
+
+test('buildMacOutlookScript embeds the range and keeps newlines/regex escapes valid JS', () => {
+    const script = buildMacOutlookScript(new Date(1000), new Date(2000));
+    assert.match(script, /new Date\(1000\)/);
+    assert.doesNotThrow(() => new Function('Application', script)(() => ({ calendarEvents: { startTime: () => [], endTime: () => [], subject: () => [] } })));
 });

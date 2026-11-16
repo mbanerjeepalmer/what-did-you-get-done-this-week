@@ -11,7 +11,7 @@ export interface Notifier {
     prompt(title: string, text: string, filePath?: string): Promise<string | null>;
 }
 
-const runCommand = (command: string, args: string[]): Promise<string> =>
+export const runCommand = (command: string, args: string[]): Promise<string> =>
     new Promise((resolve, reject) => {
         execFile(command, args, { windowsHide: true }, (error, stdout) => {
             if (error) {
@@ -266,19 +266,26 @@ export class LinuxNotifier implements Notifier {
     }
 }
 
+/** Pure: parses `button returned:Log, text returned:foo` (osascript appends a trailing newline). */
+export const parseMacDialogOutput = (output: string): { button: string; enteredText: string } => {
+    const buttonMatch = output.match(/button returned:([^,]*)/);
+    const textMatch = output.match(/text returned:(.*?)(?:, gave up:\w+)?\s*$/s);
+    return {
+        button: buttonMatch ? buttonMatch[1].trim() : 'Dismiss',
+        enteredText: textMatch ? textMatch[1] : '',
+    };
+};
+
 export class MacNotifier implements Notifier {
     async prompt(title: string, text: string, filePath?: string): Promise<string | null> {
-        const escape = (s: string) => s.replace(/"/g, '\\"');
+        const escape = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         const hint = `${withFilePath(text, filePath)} (to snooze: enter a duration or time, e.g. 30 or 16:00, then click Snooze)`;
         const script = `display dialog "${escape(hint)}" with title "${escape(
             title,
         )}" default answer "" buttons {"Dismiss", "Snooze", "Log"} default button "Log"`;
         try {
             const output = await runCommand('osascript', ['-e', script]);
-            const buttonMatch = output.match(/button returned:([^,]*)/);
-            const textMatch = output.match(/text returned:(.*)$/);
-            const button = buttonMatch ? buttonMatch[1].trim() : 'Dismiss';
-            const enteredText = textMatch ? textMatch[1] : '';
+            const { button, enteredText } = parseMacDialogOutput(output);
 
             if (button === 'Dismiss') return null;
             if (button === 'Snooze') {

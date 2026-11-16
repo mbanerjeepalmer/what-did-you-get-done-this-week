@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseActiveMicApps } from './microphone';
+import { parseActiveMicApps, parseMacMicOutput } from './microphone';
 
 test('parseActiveMicApps returns only apps whose LastUsedTimeStop is 0', () => {
     const output = [
@@ -16,4 +16,10 @@ test('parseActiveMicApps returns only apps whose LastUsedTimeStop is 0', () => {
 
 test('parseActiveMicApps returns nothing when no app holds the mic', () => {
     assert.deepEqual(parseActiveMicApps('MSTeams_8wekyb3d8bbwe|1|2\n'), []);
+});
+
+test('parseMacMicOutput reports the default input device only when the helper prints 1', () => {
+    assert.equal(parseMacMicOutput('1\n'), 'default input device');
+    assert.equal(parseMacMicOutput('0\n'), null);
+    assert.equal(parseMacMicOutput(''), null);
 });
