@@ -62,12 +62,43 @@ real Exchange sync.
 4. With no meeting the prompt appears; typing text and clicking Log writes the entry and closes it.
 5. When overdue, the "When" dropdown backfills (oldest option logs ~25 min ago).
 6. Snooze (`30`) writes `SNOOZE UNTIL` and the prompt stays away.
+7. Menu bar item: left click opens the prompt; right click shows "Open today's
+   file" and "Quit"; Open launches TextEdit; Quit exits the process.
+   `ONLY=menubar scripts/vm-e2e.sh` runs just this section against already-running agents.
 
 Also checked by hand, not in the script: `npm run stop` removes the agents,
 and after a cold VM boot both agents load and the menu bar is running.
 
-Not covered: the menu bar item's right-click menu (AppleScript can't right-click)
-and real Exchange/Outlook calendars.
+Not covered: real Exchange/Outlook calendars (see "Exchange and Outlook" below).
+
+Known behaviour: the menu bar agent has `KeepAlive` set in its launchd plist, so
+choosing **Quit** exits the process and launchd starts it again within seconds.
+Use `npm run stop` to actually stop it.
+
+## Exchange and Outlook
+
+The tool never talks to Outlook. It reads Calendar.app through EventKit
+(`scripts/calendar-events.swift`), so the thing to test is a calendar that syncs
+into Calendar.app, i.e. an Exchange / Microsoft 365 account added under System
+Settings > Internet Accounts. The New Outlook app is not in the data path (it has
+no scripting API and does not write to Calendar.app), so installing it in the VM
+adds nothing for this tool.
+
+What that takes, and what is not automated here:
+
+- Sign-in has to be done by a person in the VM window, including MFA. Scripts
+  here don't and shouldn't handle credentials.
+- Use a **test** account, not your real work one. Options: a Microsoft 365 test
+  tenant (the free developer tenant requires a Visual Studio Pro/Enterprise
+  subscription or a qualifying program, per Microsoft's developer program page),
+  or any account type Calendar.app supports (Exchange, Outlook.com, iCloud,
+  Google, CalDAV), which all go through the same EventKit path.
+- A work tenant may refuse an unmanaged VM (conditional access, device
+  compliance). That would show up as a sign-in failure, not an app bug.
+- Once an account syncs, the existing steps work unchanged: put an event on
+  that calendar for "now" and check for the `MEETING UNTIL` line. The helper
+  filters all-day, cancelled and declined events, so those are worth a manual
+  case each.
 
 ## Gotchas
 

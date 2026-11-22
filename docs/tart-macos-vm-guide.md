@@ -109,6 +109,17 @@ Grants live in the VM disk, so `delete`/re-clone from `golden` loses them
 (confirmed by design, not tested). Doing the grants in `golden` before cloning
 should make clones keep them, but that is untested.
 
+Right-clicks and real mouse input: AppleScript can't right-click, and an
+accessibility "press" on a menu bar item is a left click. Post real events with
+CoreGraphics from a small Swift tool run under Terminal (`CGEvent` mouse
+down/up at the item's position, which `System Events` gives you as
+`position`/`size` of the item). A working example is in `scripts/vm-e2e.sh`.
+
+Avoid controlling other apps with Apple Events (e.g. `tell application
+"TextEdit"`): macOS shows a separate "Terminal wants to control X" prompt that
+only a person should answer, and the script hangs until then. Use `System
+Events` (already covered by Accessibility), `pgrep` and files instead.
+
 ## 5. Things that went wrong
 
 - `brew install cirruslabs/cli/tart`: "No available formula". Use the `openai` tap.

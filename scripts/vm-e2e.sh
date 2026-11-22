@@ -23,14 +23,15 @@ chmod +x "$s.command"; open -a Terminal "$s.command"
 for i in $(seq 1 "${2:-60}"); do [ -f "$s.done" ] && break; sleep 1; done
 cat "$s.out"
 EOF
-term() { # term <name> : script on stdin, run in Terminal
-  put "$1.sh" && guest "bash ~/vmtest/runterm.sh \$HOME/vmtest/$1.sh 60"
+term() { # term <name> [timeout] : script on stdin, run in Terminal
+  put "$1.sh" && guest "bash ~/vmtest/runterm.sh \$HOME/vmtest/$1.sh ${2:-60}"
 }
 day='$HOME/what-did-you-get-done-this-week/$(date +%F).txt'
 wait_for() { # wait_for <guest shell condition> [seconds]
   guest "for i in \$(seq 1 ${2:-100}); do $1 && exit 0; sleep 1; done; exit 1"
 }
 
+if [ "${ONLY:-}" != menubar ]; then # ONLY=menubar skips sections 1-6 (agents must already be running)
 echo "== 1. build + unit tests in the guest"
 "$REPO/scripts/vm.sh" test > /tmp/vm-e2e-test.log 2>&1 && ok "npm test" || { bad "npm test (see /tmp/vm-e2e-test.log)"; }
 
@@ -124,6 +125,80 @@ EOF
 check "SNOOZE line written" "wait_for 'grep -qs \"SNOOZE UNTIL\" $day' 10"
 sleep 65
 check "no prompt while snoozed" '! guest "pgrep -f dist/prompt"'
+fi
+
+echo "== 7. menu bar item"
+# AppleScript can't right-click, and an accessibility "press" is a left click, so post
+# real mouse events with a tiny CoreGraphics tool (needs Terminal's Accessibility grant).
+put rclick.swift <<'EOF'
+import CoreGraphics
+import Foundation
+let a = CommandLine.arguments
+let p = CGPoint(x: Double(a[1])!, y: Double(a[2])!)
+let btn: CGMouseButton = a.count > 3 && a[3] == "left" ? .left : .right
+let (down, up): (CGEventType, CGEventType) = btn == .left ? (.leftMouseDown, .leftMouseUp) : (.rightMouseDown, .rightMouseUp)
+CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: btn)?.post(tap: .cghidEventTap)
+usleep(300_000)
+CGEvent(mouseEventSource: nil, mouseType: down, mouseCursorPosition: p, mouseButton: btn)?.post(tap: .cghidEventTap)
+usleep(80_000)
+CGEvent(mouseEventSource: nil, mouseType: up, mouseCursorPosition: p, mouseButton: btn)?.post(tap: .cghidEventTap)
+EOF
+# Not touched here: TextEdit Apple Events (macOS would ask for a separate Automation grant).
+mbout=$(mktemp)
+term menubar 150 > "$mbout" <<'EOF'
+pkill -f dist/prompt; pkill TextEdit
+[ -x ~/vmtest/rclick ] || swiftc -O ~/vmtest/rclick.swift -o ~/vmtest/rclick
+# a recent entry so the prompt isn't overdue and "Open today's file" has a file to open
+printf '%s\tsomething\n' "$(date -u -v-1M +%Y-%m-%dT%H:%M:%S.000Z)" > ~/what-did-you-get-done-this-week/$(date +%F).txt
+read X Y < <(osascript <<AS
+tell application "System Events" to tell process "menubar"
+  set i to menu bar item 1 of menu bar 1
+  set p to position of i
+  set s to size of i
+  return ((item 1 of p) + ((item 1 of s) div 2) as text) & " " & ((item 2 of p) + ((item 2 of s) div 2) as text)
+end tell
+AS
+)
+echo "POS=$X,$Y"
+# left click = prompt now
+~/vmtest/rclick $X $Y left
+for i in $(seq 1 20); do pgrep -f dist/prompt >/dev/null && break; sleep 1; done
+pgrep -f dist/prompt >/dev/null && echo "LEFT=prompt" || echo "LEFT=none"
+pkill -f dist/prompt; sleep 1
+# right click = menu
+~/vmtest/rclick $X $Y
+sleep 1
+echo "MENU=$(osascript <<AS
+tell application "System Events" to tell process "menubar" to get name of every menu item of menu 1 of menu bar item 1 of menu bar 1
+AS
+)"
+osascript <<AS >/dev/null
+tell application "System Events" to tell process "menubar" to click menu item "Open today's file" of menu 1 of menu bar item 1 of menu bar 1
+AS
+sleep 4
+pgrep -x TextEdit >/dev/null && echo "OPEN=TextEdit" || echo "OPEN=none"
+pkill TextEdit; sleep 1
+# right click > Quit exits the process. launchd may restart it at once, so compare pids
+# rather than relying on a fixed wait: a different pid (or none) means the old one quit.
+old=$(pgrep -f dist/menubar | head -1)
+~/vmtest/rclick $X $Y
+sleep 1
+osascript <<AS >/dev/null
+tell application "System Events" to tell process "menubar" to click menu item "Quit" of menu 1 of menu bar item 1 of menu bar 1
+AS
+for i in $(seq 1 40); do cur=$(pgrep -f dist/menubar | head -1); [ "$cur" != "$old" ] && break; sleep 1; done
+[ "$cur" != "$old" ] && echo "QUIT=exited" || echo "QUIT=still-running"
+for i in $(seq 1 30); do pgrep -f dist/menubar >/dev/null && break; sleep 1; done
+pgrep -f dist/menubar >/dev/null && echo "RESPAWN=yes" || echo "RESPAWN=no"
+EOF
+mb=$(cat "$mbout"); rm -f "$mbout"
+echo "$mb" | sed 's/^/      /'
+check "left click opens the prompt" 'echo "$mb" | grep -q "LEFT=prompt"'
+check "right click shows Open today's file + Quit" 'echo "$mb" | grep -q "MENU=Open today.s file, missing value, Quit"'
+check "Open today's file opens it in TextEdit" 'echo "$mb" | grep -q "OPEN=TextEdit"'
+check "Quit exits the menu bar process" 'echo "$mb" | grep -q "QUIT=exited"'
+# Informational, not a pass/fail: launchd KeepAlive restarts the agent after Quit.
+echo "INFO  menu bar respawned after Quit: $(echo "$mb" | sed -n 's/^RESPAWN=//p')"
 
 echo
 [ "$fails" -eq 0 ] && echo "All checks passed." || echo "$fails check(s) failed."
