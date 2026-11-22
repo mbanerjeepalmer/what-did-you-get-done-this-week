@@ -4,6 +4,11 @@ Running the tool for real takes over the screen (prompt, menu bar). To test
 without losing your machine, run it in a [Tart](https://github.com/openai/tart)
 VM (Apple Virtualization.framework, Apple Silicon only, ~33 GB on disk).
 
+For the general how-to (installing Tart, creating the VM, `tart exec`, the
+one-time permission grants, pitfalls), which applies to any project, see
+[tart-macos-vm-guide.md](tart-macos-vm-guide.md). This page covers only how this
+project uses it.
+
 ## Setup
 
 ```sh
