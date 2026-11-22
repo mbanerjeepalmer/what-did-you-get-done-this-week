@@ -31,7 +31,7 @@ wait_for() { # wait_for <guest shell condition> [seconds]
   guest "for i in \$(seq 1 ${2:-100}); do $1 && exit 0; sleep 1; done; exit 1"
 }
 
-if [ "${ONLY:-}" != menubar ]; then # ONLY=menubar skips sections 1-6 (agents must already be running)
+if [ -z "${ONLY:-}" ]; then # ONLY=menubar|edge runs just that section (agents must already be running)
 echo "== 1. build + unit tests in the guest"
 "$REPO/scripts/vm.sh" test > /tmp/vm-e2e-test.log 2>&1 && ok "npm test" || { bad "npm test (see /tmp/vm-e2e-test.log)"; }
 
@@ -127,6 +127,7 @@ sleep 65
 check "no prompt while snoozed" '! guest "pgrep -f dist/prompt"'
 fi
 
+if [ -z "${ONLY:-}" ] || [ "${ONLY:-}" = menubar ]; then
 echo "== 7. menu bar item"
 # AppleScript can't right-click, and an accessibility "press" is a left click, so post
 # real mouse events with a tiny CoreGraphics tool (needs Terminal's Accessibility grant).
@@ -199,6 +200,62 @@ check "Open today's file opens it in TextEdit" 'echo "$mb" | grep -q "OPEN=TextE
 check "Quit exits the menu bar process" 'echo "$mb" | grep -q "QUIT=exited"'
 # Informational, not a pass/fail: launchd KeepAlive restarts the agent after Quit.
 echo "INFO  menu bar respawned after Quit: $(echo "$mb" | sed -n 's/^RESPAWN=//p')"
+
+fi
+
+if [ -z "${ONLY:-}" ] || [ "${ONLY:-}" = edge ]; then
+echo "== 8. calendar edge cases (EventKit helper output)"
+# Import four events from an .ics into a local calendar: all-day, free, cancelled, busy.
+# Only the plain busy one should reach the check. Not testable on a local calendar:
+# Free/Tentative (local calendars report availability as unsupported, so everything is
+# Busy) and Declined (needs an attendee that is the current user). Check those once
+# by hand on a real Exchange/M365 calendar (docs/vm-testing.md).
+edgeout=$(mktemp)
+term edge 120 > "$edgeout" <<'EOF'
+pkill -f dist/prompt
+cleanup() { osascript <<AS
+tell application "Calendar"
+  repeat with c in calendars
+    try
+      delete (every event of c whose summary starts with "E2E-edge")
+    end try
+  end repeat
+end tell
+AS
+}
+cleanup
+d=~/vmtest/edge.ics
+st=$(date -u -v-10M +%Y%m%dT%H%M%SZ); en=$(date -u -v+50M +%Y%m%dT%H%M%SZ)
+t0=$(date +%Y%m%d); t1=$(date -v+1d +%Y%m%d); stamp=$(date -u +%Y%m%dT%H%M%SZ)
+ev() { u="$1"; s="$2"; shift 2
+  printf 'BEGIN:VEVENT\nUID:%s@e2e\nDTSTAMP:%s\nSUMMARY:%s\n' "$u" "$stamp" "$s"
+  for l in "$@"; do printf '%s\n' "$l"; done
+  printf 'END:VEVENT\n'; }
+{ printf 'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//e2e//EN\n'
+  ev allday "E2E-edge all-day" "DTSTART;VALUE=DATE:$t0" "DTEND;VALUE=DATE:$t1"
+  ev cancelled "E2E-edge cancelled" "DTSTART:$st" "DTEND:$en" "STATUS:CANCELLED"
+  ev busy "E2E-edge busy" "DTSTART:$st" "DTEND:$en" "TRANSP:OPAQUE"
+  printf 'END:VCALENDAR\n'; } > $d
+open -a Calendar $d
+for i in $(seq 1 15); do
+  osascript <<AS >/dev/null 2>&1 && break
+tell application "System Events" to tell process "Calendar" to click button "OK" of window "Add event"
+AS
+  sleep 1
+done
+sleep 4
+now=$(($(date +%s)*1000))
+echo "HELPER_BEGIN"
+~/project/dist/calendar-events $((now-86400000)) $((now+86400000))
+echo "HELPER_END"
+cleanup
+EOF
+helper=$(sed -n '/HELPER_BEGIN/,/HELPER_END/p' "$edgeout"); rm -f "$edgeout"
+echo "$helper" | grep 'E2E-edge' | sed 's/^/      /'
+check "plain busy event is reported" 'echo "$helper" | grep -q "|Busy|E2E-edge busy"'
+check "all-day event is filtered out" '! echo "$helper" | grep -q "E2E-edge all-day"'
+check "cancelled event is filtered out" '! echo "$helper" | grep -q "E2E-edge cancelled"'
+fi
 
 echo
 [ "$fails" -eq 0 ] && echo "All checks passed." || echo "$fails check(s) failed."

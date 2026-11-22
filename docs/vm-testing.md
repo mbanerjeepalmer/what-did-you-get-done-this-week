@@ -65,6 +65,8 @@ real Exchange sync.
 7. Menu bar item: left click opens the prompt; right click shows "Open today's
    file" and "Quit"; Open launches TextEdit; Quit exits the process.
    `ONLY=menubar scripts/vm-e2e.sh` runs just this section against already-running agents.
+8. Calendar edge cases, via an imported `.ics`: a plain busy event is reported;
+   all-day and cancelled events are filtered out. `ONLY=edge` runs just this.
 
 Also checked by hand, not in the script: `npm run stop` removes the agents,
 and after a cold VM boot both agents load and the menu bar is running.
@@ -96,9 +98,19 @@ What that takes, and what is not automated here:
 - A work tenant may refuse an unmanaged VM (conditional access, device
   compliance). That would show up as a sign-in failure, not an app bug.
 - Once an account syncs, the existing steps work unchanged: put an event on
-  that calendar for "now" and check for the `MEETING UNTIL` line. The helper
-  filters all-day, cancelled and declined events, so those are worth a manual
-  case each.
+  that calendar for "now" and check for the `MEETING UNTIL` line.
+
+One-off manual checklist on a real Exchange/M365 calendar. These are the cases a
+local calendar can't prove (it reports availability as unsupported, so every
+event looks Busy, and it has no attendees):
+
+1. A normal busy meeting now: `MEETING UNTIL` line, no prompt.
+2. An event marked Free: no `MEETING UNTIL` line, prompt still appears.
+3. An event marked Tentative: same as Free.
+4. A meeting you have declined: ignored.
+5. An out-of-office or all-day event: ignored.
+
+The all-day and cancelled filters are covered automatically by section 8.
 
 ## Gotchas
 
