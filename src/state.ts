@@ -17,6 +17,20 @@ export const formatEntryLine = (when: Date, entry: string): string => {
     return `${when.toISOString()}\t${entry}`;
 };
 
+/**
+ * Choices for the prompt's "when" dropdown: minutes ago in 5-minute steps up to
+ * (and always including) `maxMinutes`, the time since the prompt was due. Empty
+ * if nothing is overdue, i.e. there is nothing to backfill.
+ */
+export const backfillOptions = (maxMinutes: number, step = 5): number[] => {
+    if (!Number.isFinite(maxMinutes) || maxMinutes < 1) return [];
+    const max = Math.floor(maxMinutes);
+    const options: number[] = [];
+    for (let m = step; m < max; m += step) options.push(m);
+    options.push(max);
+    return options;
+};
+
 export const formatSnoozeLine = (when: Date, until: Date): string => {
     return `${when.toISOString()}\tSNOOZE UNTIL ${until.toISOString()}`;
 };
@@ -139,3 +153,13 @@ export const isSnoozeCommand = (response: string): boolean =>
 
 export const extractSnoozeArgument = (response: string): string =>
     response.trim().replace(/^snooze\b/i, '').trim();
+
+/**
+ * Whole minutes until the next prompt is due, negative once it's overdue
+ * (e.g. -3 = due 3 minutes ago). Under a minute overdue shows as 0.
+ */
+export const minutesUntilNextPrompt = (lines: string[], now: Date): number => {
+    const diffMs = computeDueState(lines, now).nextPromptAt.getTime() - now.getTime();
+    const minutes = diffMs >= 0 ? Math.ceil(diffMs / 60000) : Math.trunc(diffMs / 60000);
+    return minutes === 0 ? 0 : minutes; // normalise -0
+};

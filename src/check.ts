@@ -9,6 +9,7 @@ import {
     formatSnoozeLine,
     getLocalDateString,
     isSnoozeCommand,
+    minutesUntilNextPrompt,
     parseSnoozeInput,
 } from './state';
 import { getNotifier } from './notifier';
@@ -84,17 +85,30 @@ export const runCheck = async (
         // something even before the first entry of the day.
         fs.appendFileSync(filePath, '');
 
+        // How long the prompt has been overdue: the furthest back an entry can be backfilled.
+        const overdueMinutes = Math.max(0, -minutesUntilNextPrompt(lines, now));
+
         const testResponse = process.env.WGD_TEST_RESPONSE;
-        const response =
-            testResponse !== undefined
-                ? testResponse.length === 0
-                    ? null
-                    : testResponse
-                : await getNotifier().prompt(
-                      'What did you get done?',
-                      'Describe what you accomplished:',
-                      filePath,
-                  );
+        const notifier = getNotifier();
+        let minutesAgo = 0;
+        let response: string | null;
+        if (testResponse !== undefined) {
+            response = testResponse.length === 0 ? null : testResponse;
+            minutesAgo = Math.min(parseInt(process.env.WGD_TEST_MINUTES_AGO ?? '0', 10) || 0, overdueMinutes);
+        } else if (notifier.promptWithBackfill && overdueMinutes > 0) {
+            ({ response, minutesAgo } = await notifier.promptWithBackfill(
+                'What did you get done?',
+                'Describe what you accomplished:',
+                filePath,
+                overdueMinutes,
+            ));
+        } else {
+            response = await notifier.prompt(
+                'What did you get done?',
+                'Describe what you accomplished:',
+                filePath,
+            );
+        }
 
         const answeredAt = clock();
         const answeredFilePath = getTodayFilePath(answeredAt);
@@ -115,7 +129,13 @@ export const runCheck = async (
             return;
         }
 
-        appendLine(answeredFilePath, formatEntryLine(answeredAt, response));
+        // Backdate to when the work happened (minutesAgo is 0 unless backfilled). Filed by
+        // the entry's own date; overdue is measured from today's file, so this stays today's.
+        // Measured from when the dialog opened (`now`), since that's what its "N min ago
+        // (HH:mm)" labels were computed from, not from when it was finally answered.
+        const entryAt = minutesAgo > 0 ? new Date(now.getTime() - minutesAgo * 60000) : answeredAt;
+        const entryFilePath = getTodayFilePath(entryAt);
+        appendLine(entryFilePath, formatEntryLine(entryAt, response));
     } finally {
         releaseLock(LOCK_PATH);
     }

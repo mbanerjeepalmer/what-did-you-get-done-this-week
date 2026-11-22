@@ -67,3 +67,29 @@ test('e2e: empty response is treated as dismiss and implicitly snoozes 15 minute
         fs.rmSync(home, { recursive: true, force: true });
     }
 });
+
+test('e2e: backfilled entry is timestamped minutesAgo earlier, capped at how overdue the prompt is', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wgd-e2e-'));
+    try {
+        const dir = path.join(home, 'what-did-you-get-done-this-week');
+        fs.mkdirSync(dir, { recursive: true });
+        // Last entry 45 minutes ago => the prompt (15-minute interval) is 30 minutes overdue.
+        const lastEntry = new Date(Date.now() - 45 * 60000);
+        fs.writeFileSync(path.join(dir, `${getLocalDateString(new Date())}.txt`), `${lastEntry.toISOString()}\tearlier\n`);
+
+        const run = (minutesAgo: string) =>
+            execFileSync(process.execPath, [CHECK_JS, '--now'], {
+                env: { ...process.env, HOME: home, USERPROFILE: home, WGD_SKIP_MEETING_CHECK: '1', WGD_TEST_RESPONSE: 'discussing x', WGD_TEST_MINUTES_AGO: minutesAgo },
+            });
+
+        run('999'); // far more than allowed: capped to the 30 minutes overdue
+        const lines = readTodayFile(home);
+        assert.equal(lines.length, 2);
+        const [stamp, text] = lines[1].split('\t');
+        assert.equal(text, 'discussing x');
+        const agoMinutes = (Date.now() - new Date(stamp).getTime()) / 60000;
+        assert.ok(agoMinutes > 29.5 && agoMinutes < 31, `expected ~30 minutes ago, got ${agoMinutes}`);
+    } finally {
+        fs.rmSync(home, { recursive: true, force: true });
+    }
+});

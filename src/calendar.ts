@@ -1,4 +1,5 @@
-import { runPowershellScript } from './notifier';
+import * as path from 'path';
+import { runCommand, runPowershellScript } from './notifier';
 
 export interface CalendarEvent {
     start: Date;
@@ -109,10 +110,26 @@ export const parseCalendarOutput = (output: string): CalendarEvent[] =>
         })
         .filter((event) => !isNaN(event.start.getTime()) && !isNaN(event.end.getTime()));
 
+/**
+ * macOS: a small EventKit helper (scripts/calendar-events.swift, built by
+ * `npm run build`) reads Calendar.app's database and prints the same
+ * `start|end|busyStatus|subject` lines as the PowerShell script. The New
+ * Outlook has no scripting API, so this relies on the work account also being
+ * added under System Settings > Internet Accounts, which syncs it to Calendar.
+ */
+const MAC_HELPER_PATH = path.join(__dirname, 'calendar-events');
+
 /** Fetches calendar events overlapping the given day (local time), oldest first. */
 export const getEventsForDay = async (day: Date): Promise<CalendarEvent[]> => {
     const startOfDay = new Date(day.getFullYear(), day.getMonth(), day.getDate());
     const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+    if (process.platform === 'darwin') {
+        const output = await runCommand(MAC_HELPER_PATH, [
+            String(startOfDay.getTime()),
+            String(endOfDay.getTime()),
+        ]);
+        return parseCalendarOutput(output);
+    }
     const output = await runPowershellScript(buildOutlookQueryScript(startOfDay, endOfDay));
     return parseCalendarOutput(output);
 };
