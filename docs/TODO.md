@@ -12,3 +12,4 @@
 - [X] Calendar integration (Outlook COM, not Google/Graph — see docs/meeting-detection.md)
 - [ ] Focus Assist fallback for meeting detection when Outlook isn't running
 - [ ] Backfill entries from calendar after a gap (laptop asleep, etc.)
+- [ ] Backfill dropdown ("When: N min ago") on Windows and Linux; macOS has it (see `promptWithBackfill`)

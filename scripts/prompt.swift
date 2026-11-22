@@ -1,35 +1,58 @@
 import AppKit
 
 // Native prompt window, the macOS counterpart of the WinForms dialog in notifier.ts.
-// Usage: prompt <title> <text> [filePath]
-// Prints `log|<text>`, `snooze|<text>` or `dismiss|` to stdout, then exits.
+// Usage: prompt <title> <text> [filePath] [backfillMinutes]
+// backfillMinutes is a comma list (e.g. "5,10,15"); if given, a "When" dropdown offers
+// those "N min ago" choices so an entry can be backdated after being away.
+// Prints `log|<minutesAgo>|<text>`, `snooze|0|<text>` or `dismiss|0|` to stdout, then exits.
 //
 // `display dialog` can't be positioned, so this is a panel pinned to the bottom
 // right of the main screen's visible area. It's non-activating (like the Windows
 // version's WS_EX_NOACTIVATE): it appears without stealing keyboard focus from
-// whatever you're typing in, and only takes keys once you click into it.
+// whatever you're typing in, and only becomes key (and takes Enter) once you click it.
 
 let args = CommandLine.arguments
 let titleText = args.count > 1 ? args[1] : "What did you get done?"
 let bodyText = args.count > 2 ? args[2] : "Describe what you accomplished:"
 let filePath: String? = args.count > 3 && !args[3].isEmpty ? args[3] : nil
+let backfillOptions: [Int] = args.count > 4
+    ? args[4].split(separator: ",").compactMap { Int($0) }.filter { $0 > 0 } : []
 
 final class Panel: NSPanel {
-    override var canBecomeKey: Bool { true }
+    // Refuse key status until the user deliberately clicks the panel, so a stray
+    // Enter (meant for the app they were typing in) can't hit the default Log button.
+    var allowKey = false
+    override var canBecomeKey: Bool { allowKey }
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown && !allowKey {
+            allowKey = true
+            NSApp.activate(ignoringOtherApps: true)
+            makeKey()
+        }
+        super.sendEvent(event)
+    }
 }
 
 final class Controller: NSObject, NSWindowDelegate {
     var field: NSTextField!
+    var whenPopup: NSPopUpButton?
     var finished = false
 
-    func finish(_ action: String, _ text: String) {
+    /// Minutes ago chosen in the dropdown (0 = "Just now" or no dropdown).
+    var minutesAgo: Int {
+        guard let p = whenPopup else { return 0 }
+        let i = p.indexOfSelectedItem
+        return i > 0 && i <= backfillOptions.count ? backfillOptions[i - 1] : 0
+    }
+
+    func finish(_ action: String, _ text: String, minutes: Int = 0) {
         if finished { return }
         finished = true
-        print("\(action)|\(text.replacingOccurrences(of: "\n", with: " "))")
+        print("\(action)|\(minutes)|\(text.replacingOccurrences(of: "\n", with: " "))")
         fflush(stdout)
         exit(0)
     }
-    @objc func log() { finish("log", field.stringValue) }
+    @objc func log() { finish("log", field.stringValue, minutes: minutesAgo) }
     @objc func snooze() { finish("snooze", field.stringValue) }
     @objc func dismiss() { finish("dismiss", "") }
     @objc func openFile() {
@@ -42,7 +65,9 @@ let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let controller = Controller()
 
-let width: CGFloat = 420, height: CGFloat = 190, margin: CGFloat = 20
+// The dropdown row, when offered, pushes everything below it down.
+let dy: CGFloat = backfillOptions.isEmpty ? 0 : 30
+let width: CGFloat = 420, height: CGFloat = 190 + dy, margin: CGFloat = 20
 let panel = Panel(
     contentRect: NSRect(x: 0, y: 0, width: width, height: height),
     styleMask: [.titled, .closable, .nonactivatingPanel],
@@ -75,11 +100,25 @@ field.target = controller
 field.action = #selector(Controller.log)
 content.addSubview(field)
 
+if !backfillOptions.isEmpty {
+    let fmt = DateFormatter()
+    fmt.dateFormat = "HH:mm"
+    content.addSubview(label("When:", NSRect(x: 12, y: height - 86, width: 44, height: 18)))
+    let popup = NSPopUpButton(frame: NSRect(x: 58, y: height - 90, width: 200, height: 24), pullsDown: false)
+    popup.addItem(withTitle: "Just now")
+    for m in backfillOptions {
+        let t = fmt.string(from: Date().addingTimeInterval(-Double(m) * 60))
+        popup.addItem(withTitle: "\(m) min ago (\(t))")
+    }
+    controller.whenPopup = popup
+    content.addSubview(popup)
+}
+
 content.addSubview(label("To snooze: enter a duration (30), a time (16:00), then click Snooze.",
-                         NSRect(x: 12, y: height - 80, width: 396, height: 16), size: 10.5, gray: true))
+                         NSRect(x: 12, y: height - 80 - dy, width: 396, height: 16), size: 10.5, gray: true))
 
 if let p = filePath {
-    let link = NSButton(frame: NSRect(x: 12, y: height - 102, width: 396, height: 16))
+    let link = NSButton(frame: NSRect(x: 12, y: height - 102 - dy, width: 396, height: 16))
     link.isBordered = false
     link.alignment = .left
     link.attributedTitle = NSAttributedString(
@@ -102,5 +141,7 @@ button("Dismiss", 12, #selector(Controller.dismiss))
 button("Snooze", 148, #selector(Controller.snooze))
 button("Log", 284, #selector(Controller.log), primary: true)
 
+panel.initialFirstResponder = nil
+panel.makeFirstResponder(nil)
 panel.orderFrontRegardless()
 app.run()

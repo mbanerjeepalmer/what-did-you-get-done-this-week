@@ -55,7 +55,8 @@ test('parseMacDialogOutput handles the trailing newline osascript emits', () => 
 });
 
 test('parsePromptHelperOutput splits action and text, keeping pipes in the text', () => {
-    assert.deepEqual(parsePromptHelperOutput('log|a | b\n'), { action: 'log', text: 'a | b' });
-    assert.deepEqual(parsePromptHelperOutput('dismiss|\n'), { action: 'dismiss', text: '' });
-    assert.deepEqual(parsePromptHelperOutput(''), { action: '', text: '' });
+    assert.deepEqual(parsePromptHelperOutput('log|0|a | b\n'), { action: 'log', minutesAgo: 0, text: 'a | b' });
+    assert.deepEqual(parsePromptHelperOutput('log|30|discussed x\n'), { action: 'log', minutesAgo: 30, text: 'discussed x' });
+    assert.deepEqual(parsePromptHelperOutput('dismiss|0|\n'), { action: 'dismiss', minutesAgo: 0, text: '' });
+    assert.deepEqual(parsePromptHelperOutput(''), { action: '', minutesAgo: 0, text: '' });
 });

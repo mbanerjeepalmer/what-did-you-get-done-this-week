@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFile } from 'child_process';
+import { backfillOptions } from './state';
 
 export interface Notifier {
     /**
@@ -9,6 +10,19 @@ export interface Notifier {
      *   link (or shown as a path where the dialog can't do links).
      */
     prompt(title: string, text: string, filePath?: string): Promise<string | null>;
+
+    /**
+     * Like `prompt`, but also lets the user say the entry happened up to
+     * `maxMinutesAgo` minutes ago (backfilling after being away). Only the macOS
+     * prompt implements this; Windows and Linux just use `prompt` (no backfill yet).
+     * @returns `minutesAgo` is 0 for "just now" (and always 0 for snooze/dismiss).
+     */
+    promptWithBackfill?(
+        title: string,
+        text: string,
+        filePath: string | undefined,
+        maxMinutesAgo: number,
+    ): Promise<{ response: string | null; minutesAgo: number }>;
 }
 
 export const runCommand = (command: string, args: string[]): Promise<string> =>
@@ -223,6 +237,7 @@ Write-Output "$($script:wgdResult.Action)|$($script:wgdResult.Text)"
     return { action: 'dismiss', text: '' };
 };
 
+// No backfill dropdown here yet (promptWithBackfill is macOS-only; see MacNotifier).
 export class WindowsNotifier implements Notifier {
     async prompt(title: string, text: string, filePath?: string): Promise<string | null> {
         const result = await showWinFormsPrompt(title, text, filePath);
@@ -241,6 +256,7 @@ const FORMS_SEPARATOR = ''; // unlikely to appear in either field, unlike a vis
 const withFilePath = (text: string, filePath?: string) =>
     filePath ? `${text}\n(writing to ${filePath})` : text;
 
+// No backfill dropdown here yet (promptWithBackfill is macOS-only; see MacNotifier).
 export class LinuxNotifier implements Notifier {
     async prompt(title: string, rawText: string, filePath?: string): Promise<string | null> {
         const text = withFilePath(rawText, filePath);
@@ -276,30 +292,56 @@ export const parseMacDialogOutput = (output: string): { button: string; enteredT
     };
 };
 
-/** Pure: parses the `action|text` line printed by the native prompt (scripts/prompt.swift). */
-export const parsePromptHelperOutput = (output: string): { action: string; text: string } => {
-    const separatorIndex = output.indexOf('|');
-    const action = (separatorIndex === -1 ? output : output.slice(0, separatorIndex)).trim();
-    const text = separatorIndex === -1 ? '' : output.slice(separatorIndex + 1).trim();
-    return { action, text };
+/**
+ * Pure: parses the `action|minutesAgo|text` line printed by the native prompt
+ * (scripts/prompt.swift). Only the first two pipes separate fields; the text may contain more.
+ */
+export const parsePromptHelperOutput = (
+    output: string,
+): { action: string; minutesAgo: number; text: string } => {
+    const [action = '', minutes = '', ...rest] = output.split('|');
+    const parsed = parseInt(minutes, 10);
+    return {
+        action: action.trim(),
+        minutesAgo: Number.isFinite(parsed) && parsed > 0 ? parsed : 0,
+        text: rest.join('|').trim(),
+    };
 };
 
 /** Bottom-right native panel, built by `npm run build`; absent if swiftc wasn't available. */
 const MAC_PROMPT_HELPER = path.join(__dirname, 'prompt');
 
 export class MacNotifier implements Notifier {
+    async promptWithBackfill(
+        title: string,
+        text: string,
+        filePath: string | undefined,
+        maxMinutesAgo: number,
+    ): Promise<{ response: string | null; minutesAgo: number }> {
+        // The `display dialog` fallback has no dropdown, so it can only log "just now".
+        if (!fs.existsSync(MAC_PROMPT_HELPER)) {
+            return { response: await this.prompt(title, text, filePath), minutesAgo: 0 };
+        }
+        try {
+            const { action, minutesAgo, text: entered } = parsePromptHelperOutput(
+                await runCommand(MAC_PROMPT_HELPER, [
+                    title,
+                    text,
+                    filePath ?? '',
+                    backfillOptions(maxMinutesAgo).join(','),
+                ]),
+            );
+            if (action === 'snooze') return { response: `snooze ${nullIfEmpty(entered) ?? '15'}`, minutesAgo: 0 };
+            if (action === 'log') return { response: nullIfEmpty(entered), minutesAgo };
+            return { response: null, minutesAgo: 0 };
+        } catch {
+            return { response: null, minutesAgo: 0 };
+        }
+    }
+
     async prompt(title: string, text: string, filePath?: string): Promise<string | null> {
         if (fs.existsSync(MAC_PROMPT_HELPER)) {
-            try {
-                const { action, text: entered } = parsePromptHelperOutput(
-                    await runCommand(MAC_PROMPT_HELPER, [title, text, filePath ?? '']),
-                );
-                if (action === 'snooze') return `snooze ${nullIfEmpty(entered) ?? '15'}`;
-                if (action === 'log') return nullIfEmpty(entered);
-                return null;
-            } catch {
-                return null;
-            }
+            return (await this.promptWithBackfill(title, text, filePath, 0)).response;
         }
         // Fallback: `display dialog` works but can't be positioned or linked to the file.
         const escape = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');

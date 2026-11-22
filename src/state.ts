@@ -17,6 +17,20 @@ export const formatEntryLine = (when: Date, entry: string): string => {
     return `${when.toISOString()}\t${entry}`;
 };
 
+/**
+ * Choices for the prompt's "when" dropdown: minutes ago in 5-minute steps up to
+ * (and always including) `maxMinutes`, the time since the prompt was due. Empty
+ * if nothing is overdue, i.e. there is nothing to backfill.
+ */
+export const backfillOptions = (maxMinutes: number, step = 5): number[] => {
+    if (!Number.isFinite(maxMinutes) || maxMinutes < 1) return [];
+    const max = Math.floor(maxMinutes);
+    const options: number[] = [];
+    for (let m = step; m < max; m += step) options.push(m);
+    options.push(max);
+    return options;
+};
+
 export const formatSnoozeLine = (when: Date, until: Date): string => {
     return `${when.toISOString()}\tSNOOZE UNTIL ${until.toISOString()}`;
 };

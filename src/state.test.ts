@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    backfillOptions,
     computeDueState,
     extractSnoozeArgument,
     formatEntryLine,
@@ -166,4 +167,12 @@ test('minutesUntilNextPrompt counts down, and goes negative once overdue', () =>
     assert.equal(minutesUntilNextPrompt([last], new Date('2026-01-05T10:15:30.000Z')), 0);
     assert.equal(minutesUntilNextPrompt([last], new Date('2026-01-05T10:18:00.000Z')), -3);
     assert.equal(minutesUntilNextPrompt([], new Date('2026-01-05T10:18:00.000Z')), 0);
+});
+
+test('backfillOptions steps by 5 minutes up to and including the overdue time', () => {
+    assert.deepEqual(backfillOptions(20), [5, 10, 15, 20]);
+    assert.deepEqual(backfillOptions(12), [5, 10, 12]);
+    assert.deepEqual(backfillOptions(3), [3]);
+    assert.deepEqual(backfillOptions(0), []);
+    assert.deepEqual(backfillOptions(-4), []);
 });

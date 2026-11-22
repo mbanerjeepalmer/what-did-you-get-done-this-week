@@ -19,6 +19,8 @@ Two agents are installed in `~/Library/LaunchAgents`:
 - `com.mbanerjeepalmer.what-did-you-get-done-this-week`: runs the check every minute via `dist/launcher`
 - `com.mbanerjeepalmer.what-did-you-get-done-this-week.menubar`: the menu bar icon (click = prompt now, right-click = open today's file / quit)
 
+**Backfilling:** when the prompt is overdue (the menu bar number is negative, e.g. you were away), it gains a "When" dropdown: "Just now", then "5 min ago" ... back to the overdue minutes. Pick one and the entry is timestamped then, so "spent the last half hour on X" can be logged as 30 min ago. Windows and Linux don't have this yet.
+
 Logs: `~/.what-did-you-get-done-this-week.log`. Entries: `~/what-did-you-get-done-this-week/`.
 
 The mic check (`"micCheck": true` in `config.json`) needs no permission, but
