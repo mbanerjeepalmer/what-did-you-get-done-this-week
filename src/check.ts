@@ -95,7 +95,7 @@ export const runCheck = async (
         if (testResponse !== undefined) {
             response = testResponse.length === 0 ? null : testResponse;
             minutesAgo = Math.min(parseInt(process.env.WGD_TEST_MINUTES_AGO ?? '0', 10) || 0, overdueMinutes);
-        } else if (notifier.promptWithBackfill && overdueMinutes > 0) {
+        } else if (notifier.promptWithBackfill) {
             ({ response, minutesAgo } = await notifier.promptWithBackfill(
                 'What did you get done?',
                 'Describe what you accomplished:',
@@ -131,9 +131,10 @@ export const runCheck = async (
 
         // Backdate to when the work happened (minutesAgo is 0 unless backfilled). Filed by
         // the entry's own date; overdue is measured from today's file, so this stays today's.
-        // Measured from when the dialog opened (`now`), since that's what its "N min ago
-        // (HH:mm)" labels were computed from, not from when it was finally answered.
-        const entryAt = minutesAgo > 0 ? new Date(now.getTime() - minutesAgo * 60000) : answeredAt;
+        // minutesAgo is measured from the moment of submission: the dialog's options keep
+        // growing while it is open, so a prompt answered 20 minutes late can still be
+        // backfilled to any point since it was due.
+        const entryAt = minutesAgo > 0 ? new Date(answeredAt.getTime() - minutesAgo * 60000) : answeredAt;
         const entryFilePath = getTodayFilePath(entryAt);
         appendLine(entryFilePath, formatEntryLine(entryAt, response));
     } finally {

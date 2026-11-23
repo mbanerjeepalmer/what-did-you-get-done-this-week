@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFile } from 'child_process';
-import { backfillOptions } from './state';
 
 export interface Notifier {
     /**
@@ -328,7 +327,9 @@ export class MacNotifier implements Notifier {
                     title,
                     text,
                     filePath ?? '',
-                    backfillOptions(maxMinutesAgo).join(','),
+                    // Empty = no dropdown. Otherwise the minutes the prompt is already overdue
+                    // (possibly 0); the helper widens the choices as the dialog stays open.
+                    maxMinutesAgo < 0 ? '' : String(Math.max(0, Math.floor(maxMinutesAgo))),
                 ]),
             );
             if (action === 'snooze') return { response: `snooze ${nullIfEmpty(entered) ?? '15'}`, minutesAgo: 0 };
@@ -341,7 +342,7 @@ export class MacNotifier implements Notifier {
 
     async prompt(title: string, text: string, filePath?: string): Promise<string | null> {
         if (fs.existsSync(MAC_PROMPT_HELPER)) {
-            return (await this.promptWithBackfill(title, text, filePath, 0)).response;
+            return (await this.promptWithBackfill(title, text, filePath, -1)).response;
         }
         // Fallback: `display dialog` works but can't be positioned or linked to the file.
         const escape = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');

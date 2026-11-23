@@ -31,6 +31,41 @@ wait_for() { # wait_for <guest shell condition> [seconds]
   guest "for i in \$(seq 1 ${2:-100}); do $1 && exit 0; sleep 1; done; exit 1"
 }
 
+# Real mouse clicks (AppleScript "click" doesn't open a button's popup menu like a human does).
+put rclick.swift <<'EOF'
+import CoreGraphics
+import Foundation
+let a = CommandLine.arguments
+let p = CGPoint(x: Double(a[1])!, y: Double(a[2])!)
+let btn: CGMouseButton = a.count > 3 && a[3] == "left" ? .left : .right
+let (down, up): (CGEventType, CGEventType) = btn == .left ? (.leftMouseDown, .leftMouseUp) : (.rightMouseDown, .rightMouseUp)
+CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: btn)?.post(tap: .cghidEventTap)
+usleep(300_000)
+CGEvent(mouseEventSource: nil, mouseType: down, mouseCursorPosition: p, mouseButton: btn)?.post(tap: .cghidEventTap)
+usleep(80_000)
+CGEvent(mouseEventSource: nil, mouseType: up, mouseCursorPosition: p, mouseButton: btn)?.post(tap: .cghidEventTap)
+EOF
+put pickoldest.sh <<'EOF'
+# Click the "Choose when" chevron with a real mouse, then the last (oldest) menu item.
+[ -x ~/vmtest/rclick ] || swiftc -O ~/vmtest/rclick.swift -o ~/vmtest/rclick
+read X Y < <(osascript <<AS
+tell application "System Events" to tell process "prompt"
+  set b to button "Choose when" of window 1
+  set {px, py} to position of b
+  set {w, h} to size of b
+  return (px + w / 2) & " " & (py + h / 2)
+end tell
+AS
+)
+~/vmtest/rclick ${X%.*} ${Y%.*} left
+sleep 1
+osascript <<AS
+tell application "System Events" to tell process "prompt"
+  set m to menu 1 of button "Choose when" of window 1
+  click menu item (count of menu items of m) of m
+end tell
+AS
+EOF
 if [ -z "${ONLY:-}" ]; then # ONLY=menubar|edge runs just that section (agents must already be running)
 echo "== 1. build + unit tests in the guest"
 "$REPO/scripts/vm.sh" test > /tmp/vm-e2e-test.log 2>&1 && ok "npm test" || { bad "npm test (see /tmp/vm-e2e-test.log)"; }
@@ -88,15 +123,10 @@ sleep 2
 term backfill <<'EOF'
 osascript <<AS
 tell application "System Events" to tell process "prompt"
-  click pop up button 1 of window 1
-  delay 1
-  set n to count of menu items of menu 1 of pop up button 1 of window 1 -- also waits for the menu to be ready
-  click menu item n of menu 1 of pop up button 1 of window 1
-  delay 1
   set value of text field 1 of window 1 to "e2e backfilled"
-  click button "Log" of window 1
 end tell
 AS
+bash ~/vmtest/pickoldest.sh
 EOF
 put age.sh <<'EOF'
 # prints the age in seconds of the "e2e backfilled" entry (nothing if missing)
@@ -106,6 +136,29 @@ EOF
 sleep 3
 age=$(guest "bash ~/vmtest/age.sh")
 check "backfilled entry is ~25 min old (age=${age:-none}s)" '[ -n "$age" ] && [ "$age" -ge 1200 ] && [ "$age" -le 1800 ]'
+
+echo "== 5b. late answer to an on-time prompt can be backfilled"
+term ontime <<'EOF'
+pkill -f dist/prompt
+rm -f ~/what-did-you-get-done-this-week/*.txt
+EOF
+check "on-time prompt shown" "wait_for 'pgrep -f dist/prompt >/dev/null' 100"
+sleep 150 # the choices widen while the dialog stays open (refreshes every 30s)
+term late <<'EOF'
+osascript <<AS
+tell application "System Events" to tell process "prompt"
+  set value of text field 1 of window 1 to "e2e late"
+end tell
+AS
+bash ~/vmtest/pickoldest.sh
+EOF
+put age2.sh <<'EOF'
+ts=$(grep -s "e2e late" ~/what-did-you-get-done-this-week/$(date +%F).txt | cut -f1)
+[ -n "$ts" ] && echo $(( $(date +%s) - $(date -j -u -f %Y-%m-%dT%H:%M:%S "${ts%.*}" +%s) ))
+EOF
+sleep 3
+age=$(guest "bash ~/vmtest/age2.sh")
+check "late entry is backdated to when the prompt appeared (age=${age:-none}s)" '[ -n "$age" ] && [ "$age" -ge 120 ] && [ "$age" -le 240 ]'
 
 echo "== 6. snooze"
 term clear2 <<'EOF'
@@ -131,19 +184,6 @@ if [ -z "${ONLY:-}" ] || [ "${ONLY:-}" = menubar ]; then
 echo "== 7. menu bar item"
 # AppleScript can't right-click, and an accessibility "press" is a left click, so post
 # real mouse events with a tiny CoreGraphics tool (needs Terminal's Accessibility grant).
-put rclick.swift <<'EOF'
-import CoreGraphics
-import Foundation
-let a = CommandLine.arguments
-let p = CGPoint(x: Double(a[1])!, y: Double(a[2])!)
-let btn: CGMouseButton = a.count > 3 && a[3] == "left" ? .left : .right
-let (down, up): (CGEventType, CGEventType) = btn == .left ? (.leftMouseDown, .leftMouseUp) : (.rightMouseDown, .rightMouseUp)
-CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: btn)?.post(tap: .cghidEventTap)
-usleep(300_000)
-CGEvent(mouseEventSource: nil, mouseType: down, mouseCursorPosition: p, mouseButton: btn)?.post(tap: .cghidEventTap)
-usleep(80_000)
-CGEvent(mouseEventSource: nil, mouseType: up, mouseCursorPosition: p, mouseButton: btn)?.post(tap: .cghidEventTap)
-EOF
 # Not touched here: TextEdit Apple Events (macOS would ask for a separate Automation grant).
 mbout=$(mktemp)
 term menubar 150 > "$mbout" <<'EOF'

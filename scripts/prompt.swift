@@ -1,9 +1,11 @@
 import AppKit
 
 // Native prompt window, the macOS counterpart of the WinForms dialog in notifier.ts.
-// Usage: prompt <title> <text> [filePath] [backfillMinutes]
-// backfillMinutes is a comma list (e.g. "5,10,15"); if given, a "When" dropdown offers
-// those "N min ago" choices so an entry can be backdated after being away.
+// Usage: prompt <title> <text> [filePath] [overdueMinutes]
+// overdueMinutes is how long the prompt was already due when it opened (0 = on time); if
+// given, the Log button gets a dropdown arrow offering "N min ago" choices back to when it was due. The
+// choices keep growing while the dialog stays open, so a late answer can be backfilled.
+// The minutes in the output are measured from the moment of submission.
 // Prints `log|<minutesAgo>|<text>`, `snooze|0|<text>` or `dismiss|0|` to stdout, then exits.
 //
 // `display dialog` can't be positioned, so this is a panel pinned to the bottom
@@ -15,8 +17,22 @@ let args = CommandLine.arguments
 let titleText = args.count > 1 ? args[1] : "What did you get done?"
 let bodyText = args.count > 2 ? args[2] : "Describe what you accomplished:"
 let filePath: String? = args.count > 3 && !args[3].isEmpty ? args[3] : nil
-let backfillOptions: [Int] = args.count > 4
-    ? args[4].split(separator: ",").compactMap { Int($0) }.filter { $0 > 0 } : []
+let overdueAtOpen: Int? = args.count > 4 ? Int(args[4]) : nil
+let hasBackfill = overdueAtOpen != nil
+let dueAt = Date().addingTimeInterval(-Double(overdueAtOpen ?? 0) * 60)
+let step = 5
+
+/// Minutes ago (from now) of each dropdown choice after "Just now": 5-minute steps back
+/// to, and always including, the time the prompt was due.
+func currentOptions() -> [Int] {
+    let max = Int(Date().timeIntervalSince(dueAt) / 60)
+    if max < 1 { return [] }
+    var out: [Int] = []
+    var m = step
+    while m < max { out.append(m); m += step }
+    out.append(max)
+    return out
+}
 
 final class Panel: NSPanel {
     // Refuse key status until the user deliberately clicks the panel, so a stray
@@ -35,14 +51,29 @@ final class Panel: NSPanel {
 
 final class Controller: NSObject, NSWindowDelegate {
     var field: NSTextField!
-    var whenPopup: NSPopUpButton?
+    var logMenu: NSMenu?
     var finished = false
 
-    /// Minutes ago chosen in the dropdown (0 = "Just now" or no dropdown).
-    var minutesAgo: Int {
-        guard let p = whenPopup else { return 0 }
-        let i = p.indexOfSelectedItem
-        return i > 0 && i <= backfillOptions.count ? backfillOptions[i - 1] : 0
+    /// Rebuild the menu behind the Log button's arrow for the current time.
+    @objc func refreshOptions() {
+        guard let menu = logMenu else { return }
+        let fmt = DateFormatter()
+        fmt.dateFormat = "HH:mm"
+        menu.removeAllItems()
+        let now = menu.addItem(withTitle: "Just now", action: #selector(logAt(_:)), keyEquivalent: "")
+        now.target = self
+        now.tag = 0
+        for m in currentOptions() {
+            let t = fmt.string(from: Date().addingTimeInterval(-Double(m) * 60))
+            let item = menu.addItem(withTitle: "\(m) min ago (\(t))", action: #selector(logAt(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = m
+        }
+    }
+    @objc func logAt(_ item: NSMenuItem) { finish("log", field.stringValue, minutes: item.tag) }
+    @objc func showMenu(_ sender: NSButton) {
+        refreshOptions()
+        logMenu?.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 2), in: sender)
     }
 
     func finish(_ action: String, _ text: String, minutes: Int = 0) {
@@ -52,7 +83,7 @@ final class Controller: NSObject, NSWindowDelegate {
         fflush(stdout)
         exit(0)
     }
-    @objc func log() { finish("log", field.stringValue, minutes: minutesAgo) }
+    @objc func log() { finish("log", field.stringValue) }
     @objc func snooze() { finish("snooze", field.stringValue) }
     @objc func dismiss() { finish("dismiss", "") }
     @objc func openFile() {
@@ -66,7 +97,7 @@ app.setActivationPolicy(.accessory)
 let controller = Controller()
 
 // The dropdown row, when offered, pushes everything below it down.
-let dy: CGFloat = backfillOptions.isEmpty ? 0 : 30
+let dy: CGFloat = 0
 let width: CGFloat = 420, height: CGFloat = 190 + dy, margin: CGFloat = 20
 let panel = Panel(
     contentRect: NSRect(x: 0, y: 0, width: width, height: height),
@@ -100,20 +131,6 @@ field.target = controller
 field.action = #selector(Controller.log)
 content.addSubview(field)
 
-if !backfillOptions.isEmpty {
-    let fmt = DateFormatter()
-    fmt.dateFormat = "HH:mm"
-    content.addSubview(label("When:", NSRect(x: 12, y: height - 86, width: 44, height: 18)))
-    let popup = NSPopUpButton(frame: NSRect(x: 58, y: height - 90, width: 200, height: 24), pullsDown: false)
-    popup.addItem(withTitle: "Just now")
-    for m in backfillOptions {
-        let t = fmt.string(from: Date().addingTimeInterval(-Double(m) * 60))
-        popup.addItem(withTitle: "\(m) min ago (\(t))")
-    }
-    controller.whenPopup = popup
-    content.addSubview(popup)
-}
-
 content.addSubview(label("To snooze: enter a duration (30), a time (16:00), then click Snooze.",
                          NSRect(x: 12, y: height - 80 - dy, width: 396, height: 16), size: 10.5, gray: true))
 
@@ -139,7 +156,28 @@ func button(_ title: String, _ x: CGFloat, _ action: Selector, primary: Bool = f
 }
 button("Dismiss", 12, #selector(Controller.dismiss))
 button("Snooze", 148, #selector(Controller.snooze))
-button("Log", 284, #selector(Controller.log), primary: true)
+if hasBackfill {
+    // Split button: click "Log" to log now, or the chevron to pick when the work happened.
+    // Two plain buttons (a segmented control's menu doesn't open on a normal click).
+    let logButton = NSButton(title: "Log", target: controller, action: #selector(Controller.log))
+    logButton.frame = NSRect(x: 284, y: 14, width: 96, height: 30)
+    logButton.bezelStyle = .rounded
+    logButton.keyEquivalent = "\r"
+    content.addSubview(logButton)
+    let chevron = NSButton(title: "", target: controller, action: #selector(Controller.showMenu(_:)))
+    chevron.frame = NSRect(x: 380, y: 14, width: 28, height: 30)
+    chevron.bezelStyle = .rounded
+    chevron.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: "Choose when")
+    chevron.setAccessibilityLabel("Choose when")
+    content.addSubview(chevron)
+    let menu = NSMenu()
+    controller.logMenu = menu
+    controller.refreshOptions()
+    // Widen the choices as time passes while the dialog stays open.
+    RunLoop.main.add(Timer(timeInterval: 30, target: controller, selector: #selector(Controller.refreshOptions), userInfo: nil, repeats: true), forMode: .common)
+} else {
+    button("Log", 284, #selector(Controller.log), primary: true)
+}
 
 panel.initialFirstResponder = nil
 panel.makeFirstResponder(nil)
