@@ -7,6 +7,8 @@
     "build": "tsc",
     "postbuild": "node scripts/fix-shebang.js && node scripts/build-mac-helper.js",
     "test": "npm run build && node --test 'dist/**/*.test.js'",
+    "test:vm": "scripts/vm.sh test",
+    "test:e2e": "scripts/vm-e2e.sh",
     "deploy": "npm run build && node scripts/schedule.js install",
     "start": "npm run deploy",
     "stop": "node scripts/stop.js",

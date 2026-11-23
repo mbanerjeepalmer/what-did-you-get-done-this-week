@@ -43,8 +43,8 @@ for you. `scripts/vm.sh reset` discards the grants, so repeat this after a reset
 
 | Command | Does |
 | --- | --- |
-| `scripts/vm.sh test` | `npm ci && npm test` in the guest via `tart exec` (no window needed) |
-| `scripts/vm-e2e.sh` | full end-to-end check below (~6 min) |
+| `npm run test:vm` / `scripts/vm.sh test` | `npm ci && npm test` in the guest via `tart exec` (no window needed) |
+| `npm run test:e2e` / `scripts/vm-e2e.sh` | full end-to-end check below (~6 min) |
 | `scripts/vm.sh ssh` | shell in the guest |
 | `scripts/vm.sh start` / `headless` | boot with / without a window |
 | `scripts/vm.sh reset` | back to the pristine copy |
@@ -60,7 +60,8 @@ real Exchange sync.
 2. `npm start` installs both launchd agents.
 3. A meeting running now writes a `MEETING UNTIL` line and no prompt appears.
 4. With no meeting the prompt appears; typing text and clicking Log writes the entry and closes it.
-5. When overdue, the "When" dropdown backfills (oldest option logs ~25 min ago).
+5. Click the arrow on the Log button to backfill (oldest option logs ~25 min ago).
+   5b. A prompt that appeared on time but is answered 2.5 min later can still be backfilled to when it appeared.
 6. Snooze (`30`) writes `SNOOZE UNTIL` and the prompt stays away.
 7. Menu bar item: left click opens the prompt; right click shows "Open today's
    file" and "Quit"; Open launches TextEdit; Quit exits the process.
